@@ -172,6 +172,105 @@ export default function HomePage() {
     }
   }, [user]);
 
+  const handleSignIn = async () => {
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      setAuthInfo(null);
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword,
+      });
+
+      if (error) {
+        console.error(error);
+        setAuthError(error.message || "Could not sign in.");
+        return;
+      }
+
+      if (data.user) {
+        setUser(data.user);
+        setAuthInfo("Signed in.");
+        setAuthPassword("");
+        await refreshFollowups(data.user);
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthError("Could not sign in.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignUp = async () => {
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      setAuthInfo(null);
+
+      const { data, error } = await supabase.auth.signUp({
+        email: authEmail,
+        password: authPassword,
+      });
+
+      if (error) {
+        console.error(error);
+        setAuthError(error.message || "Could not sign up.");
+        return;
+      }
+
+      if (data.user) {
+        setUser(data.user);
+        setAuthInfo("Account created and signed in.");
+        setAuthPassword("");
+        await refreshFollowups(data.user);
+      } else {
+        setAuthInfo("Check your email to confirm your account.");
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthError("Could not sign up.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!authEmail) {
+      setAuthError("Enter your email to receive a reset link.");
+      return;
+    }
+
+    try {
+      setAuthLoading(true);
+      setAuthError(null);
+      setAuthInfo(null);
+
+      const redirectTo =
+        typeof window !== "undefined" ? window.location.origin : undefined;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
+        redirectTo,
+      });
+
+      if (error) {
+        console.error(error);
+        setAuthError(error.message || "Could not send reset email.");
+        return;
+      }
+
+      setAuthInfo(
+        "If an account exists for that email, a reset link has been sent."
+      );
+    } catch (err) {
+      console.error(err);
+      setAuthError("Could not send reset email.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const handleAddFollowup = async () => {
     if (!selectedProperty || !user) return;
 
@@ -767,6 +866,108 @@ export default function HomePage() {
 
         {/* Right column: Auth + follow-ups + results */}
         <section className="flex-1 space-y-4">
+          {/* Auth card */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Account
+              </h2>
+              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                <button
+                  className={
+                    "underline-offset-4 hover:underline " +
+                    (authMode === "signIn" ? "text-indigo-300" : "")
+                  }
+                  onClick={() => setAuthMode("signIn")}
+                >
+                  Sign in
+                </button>
+                <span className="text-slate-600">·</span>
+                <button
+                  className={
+                    "underline-offset-4 hover:underline " +
+                    (authMode === "signUp" ? "text-indigo-300" : "")
+                  }
+                  onClick={() => setAuthMode("signUp")}
+                >
+                  Sign up
+                </button>
+              </div>
+            </div>
+
+            {user ? (
+              <div className="text-xs text-slate-300">
+                You&apos;re signed in as{" "}
+                <span className="font-semibold">
+                  {user.email ?? user.id}
+                </span>
+                . Notes and follow-ups are scoped to this account.
+              </div>
+            ) : (
+              <form
+                className="mt-2 space-y-2 text-xs"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  authMode === "signIn" ? handleSignIn() : handleSignUp();
+                }}
+              >
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div className="md:col-span-1">
+                    <label className="mb-1 block text-[11px] text-slate-400">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-xs outline-none ring-indigo-500/60 focus:ring"
+                      required
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="mb-1 block text-[11px] text-slate-400">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-1.5 text-xs outline-none ring-indigo-500/60 focus:ring"
+                      required
+                    />
+                  </div>
+                </div>
+                {authError && (
+                  <div className="text-[11px] text-red-300">{authError}</div>
+                )}
+                {authInfo && (
+                  <div className="text-[11px] text-emerald-300">
+                    {authInfo}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="mt-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-indigo-500 disabled:opacity-60"
+                >
+                  {authLoading
+                    ? "Working…"
+                    : authMode === "signIn"
+                    ? "Sign in"
+                    : "Create account"}
+                </button>
+                <button
+                  type="button"
+                  disabled={authLoading}
+                  onClick={handlePasswordReset}
+                  className="ml-2 mt-1 rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-60"
+                >
+                  Send reset link
+                </button>
+              </form>
+            )}
+          </div>
+
           {/* Upcoming follow-ups */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
             <div className="mb-2 flex items-center justify-between">
