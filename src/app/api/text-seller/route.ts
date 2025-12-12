@@ -37,11 +37,15 @@ export async function POST(req: NextRequest) {
 
     // Prepare property details (propertyId mode preferred).
     let address: string | undefined;
-    let city: string | undefined;
-    let state: string | undefined;
-    let zip: string | undefined;
+  let city: string | undefined;
+  let state: string | undefined;
+  let zip: string | undefined;
   let price: number | undefined;
   let sellerPhone: string | null | undefined;
+
+  const isDevMode =
+    process.env.NODE_ENV !== "production" ||
+    process.env.SMS_DEV_MODE === "true";
 
   if ("propertyId" in body && body.propertyId) {
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -101,10 +105,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const toNumber =
-      (body as any).to?.trim?.() ||
-      (sellerPhone ?? "").toString().trim() ||
-      (testToNumber ?? "").trim();
+    const targetSellerNumber =
+      (body as any).to?.trim?.() || (sellerPhone ?? "").toString().trim() || null;
+    const testNumber = (testToNumber ?? "").trim();
+
+    if (!testNumber) {
+      return NextResponse.json(
+        { error: "TWILIO_TEST_TO_NUMBER is not configured" },
+        { status: 500 }
+      );
+    }
+
+    let toNumber: string;
+
+    if (isDevMode) {
+      toNumber = testNumber;
+    } else {
+      toNumber = targetSellerNumber || testNumber;
+    }
 
     if (!toNumber) {
       return NextResponse.json(
