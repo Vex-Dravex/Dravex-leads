@@ -337,6 +337,60 @@ export default function HomePage() {
     }
   };
 
+  const handleSaveNotes = async () => {
+    if (!selectedProperty || !user) return;
+
+    try {
+      setIsSavingNote(true);
+      setNoteError(null);
+      setFeedbackMessage(null);
+
+      const { data: existing, error: fetchError } = await supabase
+        .from("property_notes")
+        .select("id")
+        .eq("property_id", selectedProperty.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (fetchError) {
+        setNoteError("Could not load existing notes.");
+        return;
+      }
+
+      let saveError = null;
+
+      if (existing) {
+        const { error } = await supabase
+          .from("property_notes")
+          .update({
+            notes: noteText,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+        saveError = error;
+      } else {
+        const { error } = await supabase.from("property_notes").insert({
+          property_id: selectedProperty.id,
+          user_id: user.id,
+          notes: noteText,
+        });
+        saveError = error;
+      }
+
+      if (saveError) {
+        setNoteError("Could not save notes.");
+        return;
+      }
+
+      setFeedbackMessage("Notes saved.");
+      setTimeout(() => setFeedbackMessage(null), 2000);
+    } catch (err) {
+      setNoteError("Could not save notes.");
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
   // Load notes for selected property (scoped to user)
   useEffect(() => {
     // Clear notes when switching properties or logging out
