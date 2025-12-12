@@ -654,7 +654,7 @@ export default function HomePage() {
           created_at: enrollment.created_at,
           sequence: enrollment.sequence
             ? { name: (enrollment as any).sequence.name }
-            : undefined,
+            : null,
         });
       } else {
         setSmsEnrollment(null);
