@@ -60,6 +60,14 @@ type PropertyRow = {
   seller_phone: string | null;
 };
 
+type UserSendWindow = {
+  user_id: string;
+  enabled: boolean;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  timezone: string | null;
+};
+
 const renderTemplate = (template: string, property: PropertyRow) =>
   (template || "")
     .replace(/{{address}}/g, property.address ?? "")
@@ -72,6 +80,60 @@ const renderTemplate = (template: string, property: PropertyRow) =>
     .replace(/{{beds}}/g, property.beds?.toString() ?? "")
     .replace(/{{baths}}/g, property.baths?.toString() ?? "")
     .replace(/{{sqft}}/g, property.sqft?.toString() ?? "");
+
+const isWithinQuietHours = (
+  setting: UserSendWindow | null,
+  now: Date
+) => {
+  if (!setting || !setting.enabled) return false;
+  const tz = setting.timezone || "UTC";
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: tz,
+  });
+
+  const parts = formatter.formatToParts(now);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value || 0);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  const currentMinutes = hour * 60 + minute;
+
+  const startParts = (setting.quiet_hours_start || "00:00").split(":");
+  const endParts = (setting.quiet_hours_end || "00:00").split(":");
+  const startMinutes = Number(startParts[0]) * 60 + Number(startParts[1]);
+  const endMinutes = Number(endParts[0]) * 60 + Number(endParts[1]);
+
+  if (startMinutes <= endMinutes) {
+    // same day window
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  }
+
+  // overnight window
+  return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+};
+
+const nextAllowedTime = (setting: UserSendWindow | null, now: Date) => {
+  if (!setting || !setting.enabled || !setting.quiet_hours_end) return null;
+  const tz = setting.timezone || "UTC";
+  const [endHourStr, endMinStr] = setting.quiet_hours_end.split(":");
+  const endHour = Number(endHourStr);
+  const endMin = Number(endMinStr);
+  const target = new Date(now);
+  target.setDate(target.getDate() + 1);
+  target.setHours(endHour, endMin, 0, 0);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+  });
+  // convert target in tz back to ISO string by parsing formatted string
+  const parts = formatter.formatToParts(target);
+  const year = Number(parts.find((p) => p.type === "year")?.value || target.getFullYear());
+  const month = Number(parts.find((p) => p.type === "month")?.value || target.getMonth() + 1);
+  const day = Number(parts.find((p) => p.type === "day")?.value || target.getDate());
+  const dateInTz = new Date(Date.UTC(year, month - 1, day, endHour, endMin, 0));
+  return dateInTz.toISOString();
+};
 
 export async function POST(req: NextRequest) {
   try {
@@ -117,6 +179,12 @@ export async function POST(req: NextRequest) {
 
     for (const enrollment of enrollments as Enrollment[]) {
       try {
+        const { data: sendSetting } = await supabaseAdmin
+          .from("user_smart_send_settings")
+          .select("user_id, enabled, quiet_hours_start, quiet_hours_end, timezone")
+          .eq("user_id", enrollment.user_id)
+          .maybeSingle();
+
         const { data: step, error: stepError } = await supabaseAdmin
           .from("sms_sequence_steps")
           .select("*")
@@ -185,6 +253,19 @@ export async function POST(req: NextRequest) {
         const toNumber = isDevMode
           ? testNumber
           : targetSellerNumber || testNumber;
+
+        const nowDate = new Date();
+        if (isWithinQuietHours(sendSetting as UserSendWindow | null, nowDate)) {
+          const deferred = nextAllowedTime(sendSetting as UserSendWindow | null, nowDate);
+          await supabaseAdmin
+            .from("sms_sequence_enrollments")
+            .update({
+              next_run_at: deferred,
+              last_error: "Skipped due to send window",
+            })
+            .eq("id", enrollment.id);
+          continue;
+        }
 
         try {
           const message = await twilioClient.messages.create({
