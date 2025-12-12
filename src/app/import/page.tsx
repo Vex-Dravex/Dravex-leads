@@ -103,7 +103,7 @@ export default function ImportPage() {
         setRows(parsedRows);
         setIsParsing(false);
       },
-      error: (err: ParseError) => {
+      error: (err: any) => {
         setParseError(err.message || "Failed to parse CSV.");
         setIsParsing(false);
       },
