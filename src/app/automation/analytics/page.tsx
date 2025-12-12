@@ -299,7 +299,7 @@ function ErrorTable() {
       const { data, error: fetchError } = await supabase
         .from("sms_sequence_enrollments")
         .select(
-          "id, sequence_id, current_step, next_run_at, last_error, sequence:sms_sequences(name)"
+          "id, sequence_id, current_step, next_run_at, last_error, completed_at, sequence:sms_sequences(name)"
         )
         .eq("user_id", userId)
         .not("last_error", "is", null)
@@ -307,7 +307,18 @@ function ErrorTable() {
         .limit(50);
 
       if (fetchError) throw new Error(fetchError.message);
-      setRows((data as EnrollmentRow[]) ?? []);
+      const mapped: EnrollmentRow[] = (data as any[])?.map((row) => ({
+        id: row.id,
+        sequence_id: row.sequence_id,
+        current_step: row.current_step,
+        next_run_at: row.next_run_at,
+        last_error: row.last_error,
+        completed_at: row.completed_at ?? null,
+        sequence: row.sequence
+          ? { name: (Array.isArray(row.sequence) ? row.sequence[0]?.name : row.sequence.name) ?? "" }
+          : null,
+      }));
+      setRows(mapped ?? []);
     } catch (err: any) {
       setError(err?.message || "Failed to load errors");
     } finally {
