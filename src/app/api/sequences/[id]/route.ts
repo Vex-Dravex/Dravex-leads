@@ -14,9 +14,10 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const body = await req.json();
     const { name, is_active } = body || {};
 
@@ -34,7 +35,7 @@ export async function PATCH(
     const { error } = await supabaseAdmin
       .from("sms_sequences")
       .update(updates)
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (error) {
       return NextResponse.json(
@@ -54,13 +55,14 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const { error } = await supabaseAdmin
       .from("sms_sequences")
       .delete()
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (error) {
       return NextResponse.json(
