@@ -98,6 +98,24 @@ export type PropertySmsMessage = {
   createdAt: string;
 };
 
+export type SmsSequenceOption = {
+  id: string;
+  name: string;
+};
+
+export type SmsSequenceEnrollment = {
+  id: string;
+  sequence_id: string;
+  current_step: number;
+  next_run_at: string | null;
+  is_paused: boolean;
+  completed_at: string | null;
+  last_error: string | null;
+  sequence: {
+    name: string;
+  } | null;
+};
+
 export type SavedSearch = {
   id: string;
   userId: string;

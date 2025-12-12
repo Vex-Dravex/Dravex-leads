@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
@@ -68,6 +68,135 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ enrollment });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message || "Server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const supabase = createRouteHandlerClient({ cookies });
+    const body = await req.json();
+    const { enrollmentId, action } = body || {};
+
+    if (!enrollmentId || !action) {
+      return NextResponse.json(
+        { error: "enrollmentId and action are required" },
+        { status: 400 }
+      );
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
+    const { data: enrollment, error: fetchError } = await supabase
+      .from("sms_sequence_enrollments")
+      .select("*")
+      .eq("id", enrollmentId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (fetchError || !enrollment) {
+      return NextResponse.json(
+        { error: "Enrollment not found" },
+        { status: 404 }
+      );
+    }
+
+    if (action === "pause") {
+      const { error } = await supabase
+        .from("sms_sequence_enrollments")
+        .update({ is_paused: true })
+        .eq("id", enrollmentId)
+        .eq("user_id", user.id);
+
+      if (error) {
+        return NextResponse.json(
+          { error: "Failed to pause enrollment" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "resume") {
+      let nextRun = enrollment.next_run_at;
+      if (!nextRun && !enrollment.completed_at) {
+        nextRun = new Date().toISOString();
+      }
+
+      const { error } = await supabase
+        .from("sms_sequence_enrollments")
+        .update({ is_paused: false, next_run_at: nextRun })
+        .eq("id", enrollmentId)
+        .eq("user_id", user.id);
+
+      if (error) {
+        return NextResponse.json(
+          { error: "Failed to resume enrollment" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json(
+      { error: "Unknown action" },
+      { status: 400 }
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message || "Server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const supabase = createRouteHandlerClient({ cookies });
+    const body = await req.json();
+    const { enrollmentId } = body || {};
+
+    if (!enrollmentId) {
+      return NextResponse.json(
+        { error: "enrollmentId is required" },
+        { status: 400 }
+      );
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
+    const { error } = await supabase
+      .from("sms_sequence_enrollments")
+      .delete()
+      .eq("id", enrollmentId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      return NextResponse.json(
+        { error: "Failed to delete enrollment" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Server error" },

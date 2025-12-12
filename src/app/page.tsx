@@ -6,9 +6,12 @@ import type {
   PropertyFollowUp,
   PropertySmsMessage,
   SavedSearch,
+  SmsSequenceEnrollment,
+  SmsSequenceOption,
 } from "@/lib/types";
 import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
+import { SmsAutomationSection } from "@/components/properties/SmsAutomationSection";
 
 export default function HomePage() {
   const [properties, setProperties] = useState<Property[]>([]);
@@ -55,6 +58,13 @@ export default function HomePage() {
   const [smsMessages, setSmsMessages] = useState<PropertySmsMessage[]>([]);
   const [smsLoading, setSmsLoading] = useState(false);
   const [smsError, setSmsError] = useState<string | null>(null);
+  const [smsSequences, setSmsSequences] = useState<SmsSequenceOption[]>([]);
+  const [smsEnrollment, setSmsEnrollment] =
+    useState<SmsSequenceEnrollment | null>(null);
+  const [smsAutomationLoading, setSmsAutomationLoading] = useState(false);
+  const [smsAutomationError, setSmsAutomationError] = useState<string | null>(
+    null
+  );
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [isLoadingSavedSearches, setIsLoadingSavedSearches] = useState(false);
   const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
@@ -533,6 +543,9 @@ export default function HomePage() {
     if (!selectedProperty || !user) {
       setSmsMessages([]);
       setSmsError(null);
+      setSmsSequences([]);
+      setSmsEnrollment(null);
+      setSmsAutomationError(null);
       return;
     }
 
@@ -576,6 +589,78 @@ export default function HomePage() {
     };
 
     loadSms();
+
+    const loadAutomation = async () => {
+      try {
+        setSmsAutomationLoading(true);
+        setSmsAutomationError(null);
+
+        const { data: seqs, error: seqsError } = await supabase
+          .from("sms_sequences")
+          .select("id, name")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true });
+
+        if (seqsError) {
+          setSmsAutomationError("Could not load SMS automation data.");
+          return;
+        }
+
+        setSmsSequences(
+          (seqs ?? []).map((s: any) => ({
+            id: s.id,
+            name: s.name,
+          }))
+        );
+
+        const { data: enrollment, error: enrollmentError } = await supabase
+          .from("sms_sequence_enrollments")
+          .select(
+            `
+            id,
+            sequence_id,
+            current_step,
+            next_run_at,
+            is_paused,
+            completed_at,
+            last_error,
+            sequence:sms_sequences ( name )
+          `
+          )
+          .eq("property_id", selectedProperty.id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (enrollmentError) {
+          setSmsAutomationError("Could not load SMS automation data.");
+          return;
+        }
+
+        if (enrollment) {
+          setSmsEnrollment({
+            id: enrollment.id,
+            sequence_id: enrollment.sequence_id,
+            current_step: enrollment.current_step,
+            next_run_at: enrollment.next_run_at,
+            is_paused: enrollment.is_paused,
+            completed_at: enrollment.completed_at,
+            last_error: enrollment.last_error,
+            sequence: enrollment.sequence
+              ? { name: (enrollment as any).sequence.name }
+              : null,
+          });
+        } else {
+          setSmsEnrollment(null);
+        }
+      } catch (err) {
+        setSmsAutomationError("Could not load SMS automation data.");
+      } finally {
+        setSmsAutomationLoading(false);
+      }
+    };
+
+    loadAutomation();
   }, [selectedProperty, user]);
 
   // Load notes for selected property (scoped to user)
@@ -1882,6 +1967,28 @@ export default function HomePage() {
                       </li>
                     ))}
                   </ul>
+                )}
+              </section>
+
+              {/* SMS Automation */}
+              <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                {!user ? (
+                  <p className="text-xs text-slate-500">
+                    Sign in to enroll this lead in an automated SMS sequence.
+                  </p>
+                ) : smsAutomationLoading ? (
+                  <p className="text-xs text-slate-400">Loading automation…</p>
+                ) : (
+                  <SmsAutomationSection
+                    propertyId={selectedProperty.id}
+                    sequences={smsSequences}
+                    enrollment={smsEnrollment}
+                  />
+                )}
+                {smsAutomationError && user && !smsAutomationLoading && (
+                  <p className="mt-2 text-[11px] text-red-300">
+                    {smsAutomationError}
+                  </p>
                 )}
               </section>
 
