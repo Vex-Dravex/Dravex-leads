@@ -46,9 +46,7 @@ export async function GET(
 
     const { data: steps, error: stepsError } = await supabaseAdmin
       .from("sms_sequence_steps")
-      .select(
-        "id, sequence_id, step_number, delay_minutes, body_template, created_at, updated_at"
-      )
+      .select("id, sequence_id, step_number, delay_minutes, body_template, created_at")
       .eq("sequence_id", id)
       .order("step_number", { ascending: true });
 
