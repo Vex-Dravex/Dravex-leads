@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import Papa from "papaparse";
+import Papa, { ParseError, ParseResult } from "papaparse";
 import { supabase } from "@/lib/supabaseClient";
 
 type ImportPropertyRow = {
@@ -88,7 +88,7 @@ export default function ImportPage() {
     Papa.parse<RawRow>(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: (results: ParseResult<RawRow>) => {
         if (results.errors && results.errors.length > 0) {
           setParseError(results.errors[0].message || "Failed to parse CSV.");
           setIsParsing(false);
@@ -96,11 +96,14 @@ export default function ImportPage() {
         }
         const parsedRows = (results.data || [])
           .map(normalizeRow)
-          .filter((r) => r.address && r.city && r.state && r.zip && r.list_price !== null);
+          .filter(
+            (r: ImportPropertyRow) =>
+              r.address && r.city && r.state && r.zip && r.list_price !== null
+          );
         setRows(parsedRows);
         setIsParsing(false);
       },
-      error: (err) => {
+      error: (err: ParseError) => {
         setParseError(err.message || "Failed to parse CSV.");
         setIsParsing(false);
       },
