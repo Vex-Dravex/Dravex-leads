@@ -2,13 +2,13 @@
 
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { SmsSequence, SmsSequenceEnrollment } from "@/lib/types";
+import type { Sequence, SequenceEnrollment } from "@/types/sequences";
 import { supabase } from "@/lib/supabaseClient";
 
 type SmsAutomationSectionProps = {
   propertyId: string;
-  sequences: SmsSequence[];
-  enrollment: SmsSequenceEnrollment | null;
+  sequences: Sequence[];
+  enrollment: SequenceEnrollment | null;
   loading: boolean;
   setLoading: (v: boolean) => void;
   setErrorMsg: (msg: string | null) => void;

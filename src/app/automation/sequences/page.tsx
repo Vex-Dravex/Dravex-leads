@@ -3,13 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-
-type Sequence = {
-  id: string;
-  name: string;
-  is_active: boolean;
-  created_at: string;
-};
+import type { Sequence } from "@/types/sequences";
 
 export default function SequencesPage() {
   const [sequences, setSequences] = useState<Sequence[]>([]);

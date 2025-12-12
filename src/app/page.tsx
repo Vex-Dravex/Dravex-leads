@@ -13,12 +13,14 @@ import type {
   PropertyFollowUp,
   PropertySmsMessage,
   SavedSearch,
-  SmsSequenceEnrollment,
-  SmsSequence,
 } from "@/lib/types";
 import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 import { SmsAutomationSection } from "@/components/properties/SmsAutomationSection";
+import type {
+  Sequence,
+  SequenceEnrollment,
+} from "@/types/sequences";
 
 export default function HomePage() {
   const [properties, setProperties] = useState<Property[]>([]);
@@ -65,9 +67,9 @@ export default function HomePage() {
   const [smsMessages, setSmsMessages] = useState<PropertySmsMessage[]>([]);
   const [smsLoading, setSmsLoading] = useState(false);
   const [smsError, setSmsError] = useState<string | null>(null);
-  const [smsSequences, setSmsSequences] = useState<SmsSequence[]>([]);
+  const [smsSequences, setSmsSequences] = useState<Sequence[]>([]);
   const [smsEnrollment, setSmsEnrollment] =
-    useState<SmsSequenceEnrollment | null>(null);
+    useState<SequenceEnrollment | null>(null);
   const [smsAutomationLoading, setSmsAutomationLoading] = useState(false);
   const [smsAutomationError, setSmsAutomationError] = useState<string | null>(
     null
@@ -608,7 +610,7 @@ export default function HomePage() {
 
       const { data: seqs, error: seqsError } = await supabase
         .from("sms_sequences")
-        .select("id, name, is_active")
+        .select("id, user_id, name, description, is_active, created_at, updated_at")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .order("created_at", { ascending: true });
@@ -621,8 +623,12 @@ export default function HomePage() {
       setSmsSequences(
         (seqs ?? []).map((s: any) => ({
           id: s.id,
+          user_id: s.user_id ?? null,
           name: s.name,
+          description: s.description ?? null,
           is_active: s.is_active,
+          created_at: s.created_at ?? "",
+          updated_at: s.updated_at ?? null,
         }))
       );
 

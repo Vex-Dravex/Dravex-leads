@@ -3,21 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-
-type Sequence = {
-  id: string;
-  name: string;
-  is_active: boolean;
-  created_at: string;
-};
-
-type Step = {
-  id: string;
-  step_number: number;
-  delay_minutes: number | null;
-  body_template: string | null;
-};
+import type { Sequence, SequenceStep } from "@/types/sequences";
 
 export default function SequenceDetailPage() {
   const params = useParams<{ id: string }>();
@@ -25,7 +11,7 @@ export default function SequenceDetailPage() {
   const sequenceId = params?.id;
 
   const [sequence, setSequence] = useState<Sequence | null>(null);
-  const [steps, setSteps] = useState<Step[]>([]);
+  const [steps, setSteps] = useState<SequenceStep[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newStepDelay, setNewStepDelay] = useState<number>(0);
@@ -37,32 +23,24 @@ export default function SequenceDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const { data: seqData, error: seqError } = await supabase
-          .from("sms_sequences")
-          .select("id, name, is_active, created_at")
-          .eq("id", sequenceId)
-          .maybeSingle();
+        const res = await fetch(`/api/sequences/${sequenceId}`);
+        const payload = res.ok ? await res.json() : null;
+        if (!res.ok || !payload?.sequence) {
+          setError("Could not load sequence");
+          setLoading(false);
+          return;
+        }
+        const seqData = payload.sequence as Sequence;
 
         if (seqError || !seqData) {
           setError("Could not load sequence");
           setLoading(false);
           return;
         }
-        setSequence(seqData as Sequence);
+        setSequence(seqData);
 
-        const { data: stepData, error: stepError } = await supabase
-          .from("sms_sequence_steps")
-          .select("id, step_number, delay_minutes, body_template")
-          .eq("sequence_id", sequenceId)
-          .order("step_number", { ascending: true });
-
-        if (stepError) {
-          setError("Could not load steps");
-          setLoading(false);
-          return;
-        }
-
-        setSteps((stepData as Step[]) ?? []);
+        const stepsData = (payload.steps as SequenceStep[]) ?? [];
+        setSteps(stepsData);
       } catch (err) {
         setError("Failed to load data");
       } finally {
@@ -155,7 +133,7 @@ export default function SequenceDetailPage() {
         .select("id, step_number, delay_minutes, body_template")
         .eq("sequence_id", sequenceId)
         .order("step_number", { ascending: true });
-      setSteps((stepData as Step[]) ?? []);
+      setSteps((stepData as SequenceStep[]) ?? []);
     } catch (err) {
       setError("Failed to add step");
       setLoading(false);
@@ -164,7 +142,7 @@ export default function SequenceDetailPage() {
     }
   };
 
-  const handleUpdateStep = async (step: Step) => {
+  const handleUpdateStep = async (step: SequenceStep) => {
     if (!sequenceId) return;
     if (
       step.delay_minutes !== null &&
@@ -226,7 +204,7 @@ export default function SequenceDetailPage() {
         .select("id, step_number, delay_minutes, body_template")
         .eq("sequence_id", sequenceId)
         .order("step_number", { ascending: true });
-      setSteps((stepData as Step[]) ?? []);
+      setSteps((stepData as SequenceStep[]) ?? []);
     } catch (err) {
       setError("Failed to delete step");
       setLoading(false);

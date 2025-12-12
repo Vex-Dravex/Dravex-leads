@@ -12,6 +12,50 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+export async function GET(
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+
+    const { data: sequence, error: seqError } = await supabaseAdmin
+      .from("sms_sequences")
+      .select("id, user_id, name, is_active, created_at, updated_at")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (seqError || !sequence) {
+      return NextResponse.json(
+        { error: "Failed to load sequence" },
+        { status: 404 }
+      );
+    }
+
+    const { data: steps, error: stepsError } = await supabaseAdmin
+      .from("sms_sequence_steps")
+      .select(
+        "id, sequence_id, step_number, delay_minutes, body_template, created_at, updated_at"
+      )
+      .eq("sequence_id", id)
+      .order("step_number", { ascending: true });
+
+    if (stepsError) {
+      return NextResponse.json(
+        { error: "Failed to load steps" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ sequence, steps: steps ?? [] });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }

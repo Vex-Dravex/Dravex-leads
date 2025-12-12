@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("sms_sequences")
-      .select("id, name, is_active, created_at")
+      .select("id, user_id, name, is_active, created_at, updated_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
         name,
         is_active: !!is_active,
       })
-      .select("id, name, is_active, created_at")
+      .select("id, user_id, name, is_active, created_at, updated_at")
       .single();
 
     if (error || !data) {
