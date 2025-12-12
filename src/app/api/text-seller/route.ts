@@ -2,19 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 
-type Payload =
-  | {
-      propertyId: string;
-      to?: string | null;
-    }
-  | {
-      address: string;
-      city: string;
-      state: string;
-      zip: string;
-      price: number;
-      to?: string | null;
-    };
+type Payload = {
+  propertyId?: string;
+  to?: string | null;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  price?: number;
+};
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
