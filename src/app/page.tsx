@@ -610,7 +610,7 @@ export default function HomePage() {
 
       const { data: seqs, error: seqsError } = await supabase
         .from("sms_sequences")
-        .select("id, user_id, name, description, is_active, created_at, updated_at")
+        .select("id, user_id, name, is_active, created_at")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .order("created_at", { ascending: true });
@@ -625,7 +625,6 @@ export default function HomePage() {
           id: s.id,
           user_id: s.user_id ?? null,
           name: s.name,
-          description: s.description ?? null,
           is_active: s.is_active,
           created_at: s.created_at ?? "",
           updated_at: s.updated_at ?? null,
