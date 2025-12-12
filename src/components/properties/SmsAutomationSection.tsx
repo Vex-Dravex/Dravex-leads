@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SmsSequenceEnrollment, SmsSequenceOption } from "@/lib/types";
+import { supabase } from "@/lib/supabaseClient";
 
 type SmsAutomationSectionProps = {
   propertyId: string;
@@ -39,12 +40,21 @@ export function SmsAutomationSection({
       setIsSubmitting(true);
       setError(null);
 
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+
+      if (userError || !userId) {
+        setError("You must be signed in to enroll.");
+        return;
+      }
+
       const res = await fetch("/api/sequence-enrollment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId,
           sequenceId: selectedSequenceId,
+          userId,
         }),
       });
 

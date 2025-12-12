@@ -1,50 +1,37 @@
-// src/app/api/sequence-enrollment/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs"; // IMPORTANT: run this route on Node, not Edge
+export const runtime = "nodejs";
 
 type SequenceStep = {
   step_number: number;
   delay_minutes: number;
 };
 
-function createSupabaseServerClient() {
-  // Canonical pattern for Next.js App Router route handlers
-  return createRouteHandlerClient({ cookies });
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+if (!supabaseUrl || !serviceRoleKey) {
+  throw new Error(
+    "Missing Supabase env vars for sequence-enrollment route"
+  );
 }
 
-/**
- * Enroll a property into an SMS sequence.
- * Body: { propertyId: string; sequenceId: string }
- */
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = createSupabaseServerClient();
-    const { propertyId, sequenceId } = (await req.json()) ?? {};
+const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-    if (!propertyId || !sequenceId) {
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { propertyId, sequenceId, userId } = body || {};
+
+    if (!propertyId || !sequenceId || !userId) {
       return NextResponse.json(
-        { error: "propertyId and sequenceId are required" },
+        { error: "propertyId, sequenceId, and userId are required" },
         { status: 400 }
       );
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: "Not signed in" },
-        { status: 401 }
-      );
-    }
-
-    // Get first step (lowest step_number) for the sequence
-    const { data: stepData, error: stepError } = await supabase
+    const { data: stepData, error: stepError } = await supabaseAdmin
       .from("sms_sequence_steps")
       .select("step_number, delay_minutes")
       .eq("sequence_id", sequenceId)
@@ -59,18 +46,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const firstStep = stepData as SequenceStep;
+    const firstStep: SequenceStep = stepData;
     const delayMinutes = firstStep.delay_minutes ?? 0;
     const nextRunAt = new Date(
       Date.now() + delayMinutes * 60 * 1000
     ).toISOString();
 
-    const { data: enrollment, error: insertError } = await supabase
+    const { data: enrollment, error: insertError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .insert({
         sequence_id: sequenceId,
         property_id: propertyId,
-        user_id: user.id,
+        user_id: userId,
         current_step: firstStep.step_number,
         next_run_at: nextRunAt,
         is_paused: false,
@@ -86,21 +73,18 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ enrollment });
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Unexpected server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Unexpected server error" },
+      { status: 500 }
+    );
   }
 }
 
-/**
- * Update an enrollment (pause/resume).
- * Body: { enrollmentId: string; action: "pause" | "resume" }
- */
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient();
-    const { enrollmentId, action } = (await req.json()) ?? {};
+    const body = await req.json();
+    const { enrollmentId, action } = body || {};
 
     if (!enrollmentId || !action) {
       return NextResponse.json(
@@ -109,23 +93,10 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: "Not signed in" },
-        { status: 401 }
-      );
-    }
-
-    const { data: enrollment, error: fetchError } = await supabase
+    const { data: enrollment, error: fetchError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .select("*")
       .eq("id", enrollmentId)
-      .eq("user_id", user.id)
       .maybeSingle();
 
     if (fetchError || !enrollment) {
@@ -136,11 +107,10 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (action === "pause") {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from("sms_sequence_enrollments")
         .update({ is_paused: true })
-        .eq("id", enrollmentId)
-        .eq("user_id", user.id);
+        .eq("id", enrollmentId);
 
       if (error) {
         return NextResponse.json(
@@ -159,14 +129,13 @@ export async function PATCH(req: NextRequest) {
         nextRunAt = new Date().toISOString();
       }
 
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from("sms_sequence_enrollments")
         .update({
           is_paused: false,
           next_run_at: nextRunAt,
         })
-        .eq("id", enrollmentId)
-        .eq("user_id", user.id);
+        .eq("id", enrollmentId);
 
       if (error) {
         return NextResponse.json(
@@ -182,21 +151,18 @@ export async function PATCH(req: NextRequest) {
       { error: "Unknown action" },
       { status: 400 }
     );
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Unexpected server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Unexpected server error" },
+      { status: 500 }
+    );
   }
 }
 
-/**
- * Delete an enrollment.
- * Body: { enrollmentId: string }
- */
 export async function DELETE(req: NextRequest) {
   try {
-    const supabase = createSupabaseServerClient();
-    const { enrollmentId } = (await req.json()) ?? {};
+    const body = await req.json();
+    const { enrollmentId } = body || {};
 
     if (!enrollmentId) {
       return NextResponse.json(
@@ -205,23 +171,10 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: "Not signed in" },
-        { status: 401 }
-      );
-    }
-
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .delete()
-      .eq("id", enrollmentId)
-      .eq("user_id", user.id);
+      .eq("id", enrollmentId);
 
     if (error) {
       return NextResponse.json(
@@ -231,11 +184,10 @@ export async function DELETE(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Unexpected server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Unexpected server error" },
+      { status: 500 }
+    );
   }
 }
-
-
