@@ -96,21 +96,26 @@ export type PropertySmsMessage = {
   providerMessageSid: string | null;
   errorMessage: string | null;
   createdAt: string;
+  source?: string | null;
 };
 
-export type SmsSequenceOption = {
+export type SmsSequence = {
   id: string;
   name: string;
+  is_active: boolean;
 };
 
 export type SmsSequenceEnrollment = {
   id: string;
   sequence_id: string;
+  user_id: string;
+  property_id: string;
   current_step: number;
   next_run_at: string | null;
   is_paused: boolean;
   completed_at: string | null;
   last_error: string | null;
+  created_at: string;
   sequence: {
     name: string;
   } | null;

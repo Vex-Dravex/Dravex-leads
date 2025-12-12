@@ -2,19 +2,27 @@
 
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { SmsSequenceEnrollment, SmsSequenceOption } from "@/lib/types";
+import type { SmsSequence, SmsSequenceEnrollment } from "@/lib/types";
 import { supabase } from "@/lib/supabaseClient";
 
 type SmsAutomationSectionProps = {
   propertyId: string;
-  sequences: SmsSequenceOption[];
+  sequences: SmsSequence[];
   enrollment: SmsSequenceEnrollment | null;
+  loading: boolean;
+  setLoading: (v: boolean) => void;
+  setErrorMsg: (msg: string | null) => void;
+  onReload: () => Promise<void>;
 };
 
 export function SmsAutomationSection({
   propertyId,
   sequences,
   enrollment,
+  loading,
+  setLoading,
+  setErrorMsg,
+  onReload,
 }: SmsAutomationSectionProps) {
   const router = useRouter();
   const [selectedSequenceId, setSelectedSequenceId] = useState<string>("");
@@ -38,13 +46,16 @@ export function SmsAutomationSection({
 
     try {
       setIsSubmitting(true);
+      setLoading(true);
       setError(null);
+      setErrorMsg(null);
 
       const { data: userData, error: userError } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
 
       if (userError || !userId) {
         setError("You must be signed in to enroll.");
+        setLoading(false);
         return;
       }
 
@@ -61,14 +72,20 @@ export function SmsAutomationSection({
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         setError(payload?.error || "Could not enroll.");
+        setErrorMsg(payload?.error || "Could not enroll.");
+        setLoading(false);
         return;
       }
 
+      await onReload();
       router.refresh();
+      setSelectedSequenceId("");
     } catch (err: any) {
       setError(err?.message || "Could not enroll.");
+      setErrorMsg(err?.message || "Could not enroll.");
     } finally {
       setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
@@ -77,7 +94,9 @@ export function SmsAutomationSection({
 
     try {
       setIsSubmitting(true);
+      setLoading(true);
       setError(null);
+      setErrorMsg(null);
 
       const res = await fetch("/api/sequence-enrollment", {
         method: "PATCH",
@@ -91,14 +110,19 @@ export function SmsAutomationSection({
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         setError(payload?.error || "Could not update enrollment.");
+        setErrorMsg(payload?.error || "Could not update enrollment.");
+        setLoading(false);
         return;
       }
 
+      await onReload();
       router.refresh();
     } catch (err: any) {
       setError(err?.message || "Could not update enrollment.");
+      setErrorMsg(err?.message || "Could not update enrollment.");
     } finally {
       setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
@@ -106,7 +130,9 @@ export function SmsAutomationSection({
     if (!enrollment) return;
     try {
       setIsSubmitting(true);
+      setLoading(true);
       setError(null);
+      setErrorMsg(null);
 
       const res = await fetch("/api/sequence-enrollment", {
         method: "DELETE",
@@ -119,36 +145,46 @@ export function SmsAutomationSection({
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         setError(payload?.error || "Could not cancel enrollment.");
+        setErrorMsg(payload?.error || "Could not cancel enrollment.");
+        setLoading(false);
         return;
       }
 
+      await onReload();
       router.refresh();
     } catch (err: any) {
       setError(err?.message || "Could not cancel enrollment.");
+      setErrorMsg(err?.message || "Could not cancel enrollment.");
     } finally {
       setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+    <section className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
       <div className="mb-2 flex items-center justify-between">
         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
           SMS Automation
         </div>
-        {error && <span className="text-[11px] text-red-300">{error}</span>}
+        {(error || loading) && (
+          <span className="text-[11px] text-red-300">
+            {error || (loading ? "Working…" : "")}
+          </span>
+        )}
       </div>
 
       {!hasEnrollment ? (
         <div className="space-y-3 text-xs text-slate-300">
           <p className="text-slate-400">
-            Enroll this lead in an automated follow-up sequence.
+            Enroll this lead into an automated follow-up sequence.
           </p>
           <div className="flex gap-2">
             <select
               className="flex-1 rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2 text-xs text-slate-100 outline-none ring-purple-500/60 focus:ring"
               value={selectedSequenceId}
               onChange={(e) => setSelectedSequenceId(e.target.value)}
+              disabled={loading || sequences.length === 0}
             >
               <option value="">Select sequence…</option>
               {sequences.map((s) => (
@@ -160,81 +196,90 @@ export function SmsAutomationSection({
             <button
               type="button"
               onClick={handleEnroll}
-              disabled={!selectedSequenceId || isSubmitting}
+              disabled={
+                !selectedSequenceId || isSubmitting || loading || sequences.length === 0
+              }
               className="rounded-lg bg-purple-600 px-3 py-2 text-[11px] font-semibold text-slate-100 hover:bg-purple-500 disabled:opacity-60"
             >
               {isSubmitting ? "Working…" : "Enroll"}
             </button>
           </div>
+          {sequences.length === 0 && (
+            <p className="text-[11px] text-slate-500">
+              No active sequences yet. Create one to get started.
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-3 text-xs text-slate-300">
-          <div>
+          <div className="flex items-center justify-between gap-2">
             <div className="text-slate-400">
-              Enrolled in sequence:{" "}
+              Sequence:{" "}
               <span className="text-slate-100">
                 {enrollment.sequence?.name ?? enrollment.sequence_id}
               </span>
             </div>
-            <div className="text-slate-400">
+            <span
+              className={
+                "rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] " +
+                (enrollment.completed_at
+                  ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/50"
+                  : enrollment.is_paused
+                  ? "bg-amber-500/10 text-amber-300 border border-amber-500/50"
+                  : "bg-indigo-500/10 text-indigo-200 border border-indigo-500/50")
+              }
+            >
+              {statusLabel}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-slate-400">
+            <div>
               Current step:{" "}
               <span className="text-slate-100">{enrollment.current_step}</span>
             </div>
-            <div className="text-slate-400">
+            <div>
               Next send:{" "}
               <span className="text-slate-100">
                 {enrollment.next_run_at
                   ? new Date(enrollment.next_run_at).toLocaleString()
-                  : "N/A"}
+                  : enrollment.completed_at
+                  ? "N/A"
+                  : "Pending scheduling"}
               </span>
             </div>
-            <div className="mt-1">
-              <span
-                className={
-                  "rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] " +
-                  (enrollment.completed_at
-                    ? "border border-emerald-500/60 bg-emerald-500/10 text-emerald-300"
-                    : enrollment.is_paused
-                    ? "border border-amber-500/60 bg-amber-500/10 text-amber-300"
-                    : "border border-indigo-500/60 bg-indigo-500/10 text-indigo-200")
-                }
-              >
-                {statusLabel}
-              </span>
-            </div>
-            {enrollment.last_error && (
-              <div className="mt-1 text-[11px] text-red-300">
-                {enrollment.last_error}
-              </div>
-            )}
           </div>
+          {enrollment.last_error && (
+            <div className="text-[11px] text-red-300">
+              {enrollment.last_error}
+            </div>
+          )}
 
           {!enrollment.completed_at && (
             <div className="flex flex-wrap gap-2">
               {enrollment.is_paused ? (
                 <button
                   type="button"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || loading}
                   onClick={() => handleAction("resume")}
-                  className="rounded-lg bg-purple-600 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:bg-purple-500 disabled:opacity-60"
+                  className="rounded px-3 py-1 text-[11px] font-semibold text-slate-100 bg-purple-600 hover:bg-purple-500 disabled:opacity-60"
                 >
                   {isSubmitting ? "Working…" : "Resume"}
                 </button>
               ) : (
                 <button
                   type="button"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || loading}
                   onClick={() => handleAction("pause")}
-                  className="rounded-lg border border-slate-700 px-3 py-1 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-60"
+                  className="rounded px-3 py-1 text-[11px] font-semibold text-slate-100 bg-slate-800 hover:bg-slate-700 disabled:opacity-60"
                 >
                   {isSubmitting ? "Working…" : "Pause"}
                 </button>
               )}
               <button
                 type="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || loading}
                 onClick={handleCancel}
-                className="rounded-lg border border-red-700/70 px-3 py-1 text-[11px] font-semibold text-red-200 hover:bg-red-900/40 disabled:opacity-60"
+                className="rounded px-3 py-1 text-[11px] font-semibold text-slate-100 bg-red-600 hover:bg-red-500 disabled:opacity-60"
               >
                 {isSubmitting ? "Working…" : "Cancel"}
               </button>

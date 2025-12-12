@@ -1,13 +1,20 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, ChangeEvent } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  ChangeEvent,
+  useCallback,
+} from "react";
 import type {
   Property,
   PropertyFollowUp,
   PropertySmsMessage,
   SavedSearch,
   SmsSequenceEnrollment,
-  SmsSequenceOption,
+  SmsSequence,
 } from "@/lib/types";
 import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
@@ -58,7 +65,7 @@ export default function HomePage() {
   const [smsMessages, setSmsMessages] = useState<PropertySmsMessage[]>([]);
   const [smsLoading, setSmsLoading] = useState(false);
   const [smsError, setSmsError] = useState<string | null>(null);
-  const [smsSequences, setSmsSequences] = useState<SmsSequenceOption[]>([]);
+  const [smsSequences, setSmsSequences] = useState<SmsSequence[]>([]);
   const [smsEnrollment, setSmsEnrollment] =
     useState<SmsSequenceEnrollment | null>(null);
   const [smsAutomationLoading, setSmsAutomationLoading] = useState(false);
@@ -539,129 +546,139 @@ export default function HomePage() {
     }
   };
 
-  useEffect(() => {
+  const loadSmsHistory = useCallback(async () => {
     if (!selectedProperty || !user) {
       setSmsMessages([]);
       setSmsError(null);
+      return;
+    }
+
+    try {
+      setSmsLoading(true);
+      setSmsError(null);
+
+      const { data, error } = await supabase
+        .from("property_sms_messages")
+        .select(
+          "id, property_id, user_id, to_number, from_number, body, status, provider_message_sid, error_message, created_at, source"
+        )
+        .eq("property_id", selectedProperty.id)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) {
+        setSmsError("Could not load SMS history.");
+        return;
+      }
+
+      const mapped: PropertySmsMessage[] = (data ?? []).map((row: any) => ({
+        id: row.id,
+        propertyId: row.property_id,
+        userId: row.user_id,
+        toNumber: row.to_number,
+        fromNumber: row.from_number,
+        body: row.body,
+        status: (row.status as "sent" | "failed") ?? "sent",
+        providerMessageSid: row.provider_message_sid,
+        errorMessage: row.error_message,
+        createdAt: row.created_at,
+        source: row.source,
+      }));
+
+      setSmsMessages(mapped);
+    } catch (err) {
+      setSmsError("Could not load SMS history.");
+    } finally {
+      setSmsLoading(false);
+    }
+  }, [selectedProperty, user]);
+
+  const loadSmsAutomation = useCallback(async () => {
+    if (!selectedProperty || !user) {
       setSmsSequences([]);
       setSmsEnrollment(null);
       setSmsAutomationError(null);
       return;
     }
 
-    const loadSms = async () => {
-      try {
-        setSmsLoading(true);
-        setSmsError(null);
+    try {
+      setSmsAutomationLoading(true);
+      setSmsAutomationError(null);
 
-        const { data, error } = await supabase
-          .from("property_sms_messages")
-          .select("*")
-          .eq("property_id", selectedProperty.id)
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(20);
+      const { data: seqs, error: seqsError } = await supabase
+        .from("sms_sequences")
+        .select("id, name, is_active")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .order("created_at", { ascending: true });
 
-        if (error) {
-          setSmsError("Could not load SMS history.");
-          return;
-        }
-
-        const mapped: PropertySmsMessage[] = (data ?? []).map((row: any) => ({
-          id: row.id,
-          propertyId: row.property_id,
-          userId: row.user_id,
-          toNumber: row.to_number,
-          fromNumber: row.from_number,
-          body: row.body,
-          status: (row.status as "sent" | "failed") ?? "sent",
-          providerMessageSid: row.provider_message_sid,
-          errorMessage: row.error_message,
-          createdAt: row.created_at,
-        }));
-
-        setSmsMessages(mapped);
-      } catch (err) {
-        setSmsError("Could not load SMS history.");
-      } finally {
-        setSmsLoading(false);
-      }
-    };
-
-    loadSms();
-
-    const loadAutomation = async () => {
-      try {
-        setSmsAutomationLoading(true);
-        setSmsAutomationError(null);
-
-        const { data: seqs, error: seqsError } = await supabase
-          .from("sms_sequences")
-          .select("id, name")
-          .eq("user_id", user.id)
-          .eq("is_active", true)
-          .order("created_at", { ascending: true });
-
-        if (seqsError) {
-          setSmsAutomationError("Could not load SMS automation data.");
-          return;
-        }
-
-        setSmsSequences(
-          (seqs ?? []).map((s: any) => ({
-            id: s.id,
-            name: s.name,
-          }))
-        );
-
-        const { data: enrollment, error: enrollmentError } = await supabase
-          .from("sms_sequence_enrollments")
-          .select(
-            `
-            id,
-            sequence_id,
-            current_step,
-            next_run_at,
-            is_paused,
-            completed_at,
-            last_error,
-            sequence:sms_sequences ( name )
-          `
-          )
-          .eq("property_id", selectedProperty.id)
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (enrollmentError) {
-          setSmsAutomationError("Could not load SMS automation data.");
-          return;
-        }
-
-        if (enrollment) {
-          setSmsEnrollment({
-            id: enrollment.id,
-            sequence_id: enrollment.sequence_id,
-            current_step: enrollment.current_step,
-            next_run_at: enrollment.next_run_at,
-            is_paused: enrollment.is_paused,
-            completed_at: enrollment.completed_at,
-            last_error: enrollment.last_error,
-            sequence: enrollment.sequence
-              ? { name: (enrollment as any).sequence.name }
-              : null,
-          });
-        } else {
-          setSmsEnrollment(null);
-        }
-      } catch (err) {
+      if (seqsError) {
         setSmsAutomationError("Could not load SMS automation data.");
-      } finally {
-        setSmsAutomationLoading(false);
+        return;
       }
-    };
 
-    loadAutomation();
+      setSmsSequences(
+        (seqs ?? []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          is_active: s.is_active,
+        }))
+      );
+
+      const { data: enrollment, error: enrollmentError } = await supabase
+        .from("sms_sequence_enrollments")
+        .select(
+          "id, sequence_id, user_id, property_id, current_step, next_run_at, is_paused, completed_at, last_error, created_at, sequence:sms_sequences(name)"
+        )
+        .eq("property_id", selectedProperty.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (enrollmentError) {
+        setSmsAutomationError("Could not load SMS automation data.");
+        return;
+      }
+
+      if (enrollment) {
+        setSmsEnrollment({
+          id: enrollment.id,
+          sequence_id: enrollment.sequence_id,
+          user_id: enrollment.user_id,
+          property_id: enrollment.property_id,
+          current_step: enrollment.current_step,
+          next_run_at: enrollment.next_run_at,
+          is_paused: enrollment.is_paused,
+          completed_at: enrollment.completed_at,
+          last_error: enrollment.last_error,
+          created_at: enrollment.created_at,
+          sequence: enrollment.sequence
+            ? { name: (enrollment as any).sequence.name }
+            : undefined,
+        });
+      } else {
+        setSmsEnrollment(null);
+      }
+    } catch (err) {
+      setSmsAutomationError("Could not load SMS automation data.");
+    } finally {
+      setSmsAutomationLoading(false);
+    }
   }, [selectedProperty, user]);
+
+  useEffect(() => {
+    if (!selectedProperty || !user) {
+      setSmsMessages([]);
+      setSmsSequences([]);
+      setSmsEnrollment(null);
+      setSmsError(null);
+      setSmsAutomationError(null);
+      return;
+    }
+
+    loadSmsHistory();
+    loadSmsAutomation();
+  }, [selectedProperty, user, loadSmsHistory, loadSmsAutomation]);
 
   // Load notes for selected property (scoped to user)
   useEffect(() => {
@@ -1944,6 +1961,16 @@ export default function HomePage() {
                           </span>
                           <span
                             className={
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium " +
+                              (m.source === "sequence"
+                                ? "bg-purple-900/60 text-purple-200"
+                                : "bg-slate-800 text-slate-200")
+                            }
+                          >
+                            {m.source === "sequence" ? "Automated" : "Manual"}
+                          </span>
+                          <span
+                            className={
                               "text-[10px] font-semibold uppercase tracking-[0.16em] " +
                               (m.status === "sent"
                                 ? "text-emerald-300"
@@ -1983,6 +2010,10 @@ export default function HomePage() {
                     propertyId={selectedProperty.id}
                     sequences={smsSequences}
                     enrollment={smsEnrollment}
+                    loading={smsAutomationLoading}
+                    setLoading={setSmsAutomationLoading}
+                    setErrorMsg={setSmsAutomationError}
+                    onReload={loadSmsAutomation}
                   />
                 )}
                 {smsAutomationError && user && !smsAutomationLoading && (
