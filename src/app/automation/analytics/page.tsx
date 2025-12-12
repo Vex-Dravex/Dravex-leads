@@ -1,382 +1,461 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
 
-type MessageRow = {
-  created_at: string;
-  status: string;
-  source: string | null;
-  provider_message_sid: string | null;
-  error_message: string | null;
+type OverviewResponse = {
+  windowDays: number;
+  totals: {
+    sms: number;
+    manualSms: number;
+    sequenceSms: number;
+    failedSms: number;
+  };
+  enrollments: {
+    active: number;
+    paused: number;
+    completed: number;
+    errored: number;
+  };
 };
 
-type EnrollmentRow = {
-  id: string;
-  sequence_id: string;
-  current_step: number;
-  completed_at: string | null;
-  next_run_at: string | null;
-  last_error: string | null;
-  sequence?: { name: string } | null;
+type TimeseriesPoint = {
+  date: string;
+  total: number;
+  manual: number;
+  sequence: number;
 };
 
-type SequencePerf = {
-  sequence_id: string;
-  name: string;
-  enrollments: number;
-  completions: number;
-  failures: number;
+type StepsResponse = {
+  sequences: Array<{
+    sequence_id: string;
+    sequence_name: string;
+    steps: Array<{ step_number: number; reached: number; errors: number }>;
+  }>;
+};
+
+type ErrorsResponse = {
+  enrollmentErrors: Array<{
+    id: string;
+    sequence_id: string;
+    property_id: string;
+    last_error: string | null;
+    current_step: number;
+    next_run_at: string | null;
+    created_at: string;
+  }>;
+  messageErrors: Array<{
+    id: string;
+    property_id: string;
+    source: string | null;
+    status: string | null;
+    error_message: string | null;
+    created_at: string;
+  }>;
+  windowDays: number;
+};
+
+type KPI = {
+  title: string;
+  value: string;
+  sub: string;
 };
 
 export default function AutomationAnalyticsPage() {
-  const [messages, setMessages] = useState<MessageRow[]>([]);
-  const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [timeseries, setTimeseries] = useState<TimeseriesPoint[]>([]);
+  const [stepsData, setStepsData] = useState<StepsResponse | null>(null);
+  const [errorsData, setErrorsData] = useState<ErrorsResponse | null>(null);
+
+  const [loadingOverview, setLoadingOverview] = useState(false);
+  const [loadingTimeseries, setLoadingTimeseries] = useState(false);
+  const [loadingSteps, setLoadingSteps] = useState(false);
+  const [loadingErrors, setLoadingErrors] = useState(false);
+
+  const [errorOverview, setErrorOverview] = useState<string | null>(null);
+  const [errorTimeseries, setErrorTimeseries] = useState<string | null>(null);
+  const [errorSteps, setErrorSteps] = useState<string | null>(null);
+  const [errorErrors, setErrorErrors] = useState<string | null>(null);
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
+    const fetchOverview = async () => {
+      setLoadingOverview(true);
+      setErrorOverview(null);
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        const userId = userData?.user?.id;
-        if (!userId) {
-          setLoading(false);
+        const res = await fetch("/api/automation/analytics/overview");
+        const json = await res.json();
+        if (!res.ok) {
+          setErrorOverview(json?.error || "Failed to load overview");
           return;
         }
-
-        const since = new Date();
-        since.setDate(since.getDate() - 30);
-
-        const { data: msgData, error: msgErr } = await supabase
-          .from("property_sms_messages")
-          .select("created_at, status, source, provider_message_sid, error_message")
-          .eq("source", "sequence")
-          .gte("created_at", since.toISOString());
-
-        if (msgErr) throw new Error(msgErr.message);
-        setMessages((msgData as MessageRow[]) ?? []);
-
-        const { data: enrollData, error: enrollErr } = await supabase
-          .from("sms_sequence_enrollments")
-          .select(
-            "id, sequence_id, current_step, completed_at, next_run_at, last_error, sequence:sms_sequences(name)"
-          )
-          .eq("user_id", userId);
-
-        if (enrollErr) throw new Error(enrollErr.message);
-        const mappedEnrollments: EnrollmentRow[] = (enrollData as any[])?.map(
-          (row) => ({
-            id: row.id,
-            sequence_id: row.sequence_id,
-            current_step: row.current_step,
-            completed_at: row.completed_at,
-            next_run_at: row.next_run_at,
-            last_error: row.last_error,
-            sequence: row.sequence
-              ? { name: (Array.isArray(row.sequence) ? row.sequence[0]?.name : row.sequence.name) ?? "" }
-              : null,
-          })
-        );
-        setEnrollments(mappedEnrollments ?? []);
+        setOverview(json as OverviewResponse);
       } catch (err: any) {
-        setError(err?.message || "Failed to load analytics");
+        console.error(err);
+        setErrorOverview(err?.message || "Failed to load overview");
       } finally {
-        setLoading(false);
+        setLoadingOverview(false);
       }
     };
 
-    load();
-  }, []);
-
-  const kpis = useMemo(() => {
-    const total = messages.length;
-    const sent = messages.filter((m) => m.status === "sent").length;
-    const failed = messages.filter((m) => m.status === "failed").length;
-    const lastFailed = messages
-      .filter((m) => m.status === "failed")
-      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0];
-
-    const replyCount = messages.filter((m: any) => m.is_reply).length || 0;
-    const replyRate = total > 0 ? Math.round((replyCount / total) * 100) : 0;
-
-    return {
-      total,
-      sent,
-      failed,
-      successRate: total ? Math.round((sent / total) * 100) : 0,
-      failureRate: total ? Math.round((failed / total) * 100) : 0,
-      lastFailedAt: lastFailed?.created_at ?? null,
-      replyRate,
+    const fetchTimeseries = async () => {
+      setLoadingTimeseries(true);
+      setErrorTimeseries(null);
+      try {
+        const res = await fetch("/api/automation/analytics/timeseries");
+        const json = await res.json();
+        if (!res.ok) {
+          setErrorTimeseries(json?.error || "Failed to load timeseries");
+          return;
+        }
+        setTimeseries((json?.series as TimeseriesPoint[]) ?? []);
+      } catch (err: any) {
+        console.error(err);
+        setErrorTimeseries(err?.message || "Failed to load timeseries");
+      } finally {
+        setLoadingTimeseries(false);
+      }
     };
-  }, [messages]);
 
-  const messagesByDay = useMemo(() => {
-    const counts: Record<string, number> = {};
-    messages.forEach((m) => {
-      const day = m.created_at.split("T")[0];
-      counts[day] = (counts[day] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([day, count]) => ({ day, count }))
-      .sort((a, b) => (a.day > b.day ? 1 : -1));
-  }, [messages]);
-
-  const sequencePerf: SequencePerf[] = useMemo(() => {
-    const map: Record<string, SequencePerf> = {};
-    enrollments.forEach((e) => {
-      const key = e.sequence_id;
-      if (!map[key]) {
-        map[key] = {
-          sequence_id: key,
-          name: e.sequence?.name ?? key,
-          enrollments: 0,
-          completions: 0,
-          failures: 0,
-        };
+    const fetchSteps = async () => {
+      setLoadingSteps(true);
+      setErrorSteps(null);
+      try {
+        const res = await fetch("/api/automation/analytics/steps");
+        const json = await res.json();
+        if (!res.ok) {
+          setErrorSteps(json?.error || "Failed to load steps analytics");
+          return;
+        }
+        setStepsData(json as StepsResponse);
+      } catch (err: any) {
+        console.error(err);
+        setErrorSteps(err?.message || "Failed to load steps analytics");
+      } finally {
+        setLoadingSteps(false);
       }
-      map[key].enrollments += 1;
-      if (e.completed_at) map[key].completions += 1;
-      if (e.last_error) map[key].failures += 1;
-    });
-    return Object.values(map).sort((a, b) => b.enrollments - a.enrollments);
-  }, [enrollments]);
+    };
 
-  const stepDropoff = useMemo(() => {
-    const counts: Record<number, number> = {};
-    enrollments.forEach((e) => {
-      counts[e.current_step] = (counts[e.current_step] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([step, count]) => ({ step: Number(step), count }))
-      .sort((a, b) => a.step - b.step);
-  }, [enrollments]);
-
-  return (
-    <div className="mx-auto max-w-6xl px-4 py-6 text-slate-100">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Automation Analytics</h1>
-          <p className="text-sm text-slate-400">
-            Performance of your automated SMS sequences.
-          </p>
-        </div>
-        <Link
-          href="/automation/sequences"
-          className="text-xs text-indigo-300 underline underline-offset-4"
-        >
-          Manage sequences
-        </Link>
-      </div>
-
-      {error && <p className="mb-3 text-xs text-red-300">{error}</p>}
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="text-xs text-slate-400">Total Automated SMS</div>
-          <div className="text-2xl font-semibold">{kpis.total}</div>
-        </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="text-xs text-slate-400">Success Rate</div>
-          <div className="text-2xl font-semibold">{kpis.successRate}%</div>
-          <div className="text-[11px] text-slate-500">Failed: {kpis.failureRate}%</div>
-        </div>
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="text-xs text-slate-400">Reply Rate (prep)</div>
-          <div className="text-2xl font-semibold">{kpis.replyRate}%</div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="mb-2 text-sm font-semibold text-slate-200">
-            Messages Over Time (30d)
-          </div>
-          {messagesByDay.length === 0 ? (
-            <div className="text-xs text-slate-500">No messages yet.</div>
-          ) : (
-            <div className="space-y-1 text-[11px]">
-              {messagesByDay.map((d) => (
-                <div key={d.day} className="flex items-center gap-2">
-                  <div className="w-20 text-slate-400">{d.day}</div>
-                  <div className="h-2 flex-1 rounded bg-slate-800">
-                    <div
-                      className="h-2 rounded bg-indigo-500"
-                      style={{ width: `${Math.min(d.count * 10, 100)}%` }}
-                    />
-                  </div>
-                  <div className="w-10 text-right text-slate-300">{d.count}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="mb-2 text-sm font-semibold text-slate-200">
-            Sequence Performance
-          </div>
-          {sequencePerf.length === 0 ? (
-            <div className="text-xs text-slate-500">No enrollments yet.</div>
-          ) : (
-            <div className="space-y-2 text-[11px]">
-              {sequencePerf.map((s) => (
-                <div
-                  key={s.sequence_id}
-                  className="rounded-lg border border-slate-800 bg-slate-950/60 p-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="text-slate-200">{s.name}</div>
-                    <div className="text-slate-400">Enrollments: {s.enrollments}</div>
-                  </div>
-                  <div className="mt-1 flex gap-2 text-slate-400">
-                    <span>Completions: {s.completions}</span>
-                    <span>Failures: {s.failures}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="mb-2 text-sm font-semibold text-slate-200">
-            Step Drop-off
-          </div>
-          {stepDropoff.length === 0 ? (
-            <div className="text-xs text-slate-500">No data.</div>
-          ) : (
-            <div className="space-y-1 text-[11px]">
-              {stepDropoff.map((s) => (
-                <div key={s.step} className="flex items-center gap-2">
-                  <div className="w-16 text-slate-400">Step {s.step}</div>
-                  <div className="h-2 flex-1 rounded bg-slate-800">
-                    <div
-                      className="h-2 rounded bg-emerald-500"
-                      style={{ width: `${Math.min(s.count * 10, 100)}%` }}
-                    />
-                  </div>
-                  <div className="w-10 text-right text-slate-300">{s.count}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="mb-2 text-sm font-semibold text-slate-200">
-            Recent Sequence Errors
-          </div>
-          <ErrorTable />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ErrorTable() {
-  const [rows, setRows] = useState<EnrollmentRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) {
-        setRows([]);
-        setLoading(false);
-        return;
+    const fetchErrors = async () => {
+      setLoadingErrors(true);
+      setErrorErrors(null);
+      try {
+        const res = await fetch("/api/automation/analytics/errors");
+        const json = await res.json();
+        if (!res.ok) {
+          setErrorErrors(json?.error || "Failed to load errors");
+          return;
+        }
+        setErrorsData(json as ErrorsResponse);
+      } catch (err: any) {
+        console.error(err);
+        setErrorErrors(err?.message || "Failed to load errors");
+      } finally {
+        setLoadingErrors(false);
       }
+    };
 
-      const { data, error: fetchError } = await supabase
-        .from("sms_sequence_enrollments")
-        .select(
-          "id, sequence_id, current_step, next_run_at, last_error, completed_at, sequence:sms_sequences(name)"
-        )
-        .eq("user_id", userId)
-        .not("last_error", "is", null)
-        .order("next_run_at", { ascending: false })
-        .limit(50);
-
-      if (fetchError) throw new Error(fetchError.message);
-      const mapped: EnrollmentRow[] = (data as any[])?.map((row) => ({
-        id: row.id,
-        sequence_id: row.sequence_id,
-        current_step: row.current_step,
-        next_run_at: row.next_run_at,
-        last_error: row.last_error,
-        completed_at: row.completed_at ?? null,
-        sequence: row.sequence
-          ? { name: (Array.isArray(row.sequence) ? row.sequence[0]?.name : row.sequence.name) ?? "" }
-          : null,
-      }));
-      setRows(mapped ?? []);
-    } catch (err: any) {
-      setError(err?.message || "Failed to load errors");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
+    fetchOverview();
+    fetchTimeseries();
+    fetchSteps();
+    fetchErrors();
   }, []);
 
-  const resetError = async (id: string) => {
+  const kpis: KPI[] = useMemo(() => {
+    if (!overview) return [];
+    return [
+      {
+        title: "Total SMS",
+        value: overview.totals.sms.toLocaleString(),
+        sub: `Last ${overview.windowDays} days`,
+      },
+      {
+        title: "Sequence SMS",
+        value: overview.totals.sequenceSms.toLocaleString(),
+        sub: "Automated sends",
+      },
+      {
+        title: "Manual SMS",
+        value: overview.totals.manualSms.toLocaleString(),
+        sub: "Manual sends",
+      },
+      {
+        title: "Failed Sends",
+        value: overview.totals.failedSms.toLocaleString(),
+        sub: `Last ${overview.windowDays} days`,
+      },
+      {
+        title: "Active Enrollments",
+        value: overview.enrollments.active.toLocaleString(),
+        sub: "Currently active",
+      },
+      {
+        title: "Paused",
+        value: overview.enrollments.paused.toLocaleString(),
+        sub: "Waiting",
+      },
+      {
+        title: "Completed",
+        value: overview.enrollments.completed.toLocaleString(),
+        sub: "Finished sequences",
+      },
+      {
+        title: "Errored",
+        value: overview.enrollments.errored.toLocaleString(),
+        sub: "Needs attention",
+      },
+    ];
+  }, [overview]);
+
+  const handleResetError = async (enrollmentId: string) => {
     try {
-      const res = await fetch("/api/enrollments/reset-error", {
+      const res = await fetch("/api/automation/analytics/errors/reset", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enrollmentId: id }),
+        body: JSON.stringify({ enrollmentId }),
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
-        alert((payload as any)?.error || "Failed to reset");
+        console.error("Failed to reset error", payload);
         return;
       }
-      load();
+      // Refresh errors
+      const ref = await fetch("/api/automation/analytics/errors");
+      const json = await ref.json();
+      if (ref.ok) {
+        setErrorsData(json as ErrorsResponse);
+      }
     } catch (err) {
-      alert("Failed to reset");
+      console.error(err);
     }
   };
 
-  if (loading) return <div className="text-xs text-slate-400">Loading…</div>;
-  if (error) return <div className="text-xs text-red-300">{error}</div>;
-  if (rows.length === 0)
-    return <div className="text-xs text-slate-500">No errors.</div>;
-
   return (
-    <div className="space-y-2 text-[11px]">
-      {rows.map((r) => (
-        <div
-          key={r.id}
-          className="rounded-lg border border-slate-800 bg-slate-950/70 p-2"
-        >
-          <div className="flex items-center justify-between">
-            <div className="text-slate-200">
-              {r.sequence?.name ?? r.sequence_id} — Step {r.current_step}
-            </div>
-            <button
-              onClick={() => resetError(r.id)}
-              className="text-[10px] text-indigo-300 underline"
-            >
-              Reset
-            </button>
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
+        <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">Automation Analytics</h1>
+            <p className="text-sm text-slate-400">
+              Track automated SMS performance, enrollment health, and errors.
+            </p>
           </div>
-          <div className="text-slate-400">{r.last_error}</div>
-          <div className="text-slate-500">
-            Retry at: {r.next_run_at ? new Date(r.next_run_at).toLocaleString() : "—"}
+        </header>
+
+        {/* KPI cards */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {loadingOverview && !overview ? (
+            <div className="col-span-4 text-sm text-slate-400">
+              Loading overview…
+            </div>
+          ) : errorOverview ? (
+            <div className="col-span-4 text-sm text-red-300">
+              {errorOverview}
+            </div>
+          ) : (
+            kpis.map((kpi) => (
+              <div
+                key={kpi.title}
+                className="rounded-xl border border-slate-800 bg-slate-900/70 p-4"
+              >
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  {kpi.title}
+                </div>
+                <div className="mt-1 text-2xl font-semibold text-slate-100">
+                  {kpi.value}
+                </div>
+                <div className="text-[11px] text-slate-500">{kpi.sub}</div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Timeseries + Steps */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-200">
+                Messages over time
+              </h2>
+              {loadingTimeseries && (
+                <span className="text-[11px] text-slate-400">Loading…</span>
+              )}
+              {errorTimeseries && (
+                <span className="text-[11px] text-red-300">
+                  {errorTimeseries}
+                </span>
+              )}
+            </div>
+            {timeseries.length === 0 ? (
+              <p className="text-xs text-slate-500">No data yet.</p>
+            ) : (
+              <ul className="space-y-1 text-xs text-slate-300">
+                {timeseries.map((p) => (
+                  <li
+                    key={p.date}
+                    className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div className="text-slate-400">{p.date}</div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-slate-100">Total {p.total}</span>
+                      <span className="text-purple-300">
+                        Seq {p.sequence}
+                      </span>
+                      <span className="text-slate-200">Man {p.manual}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-200">
+                Step progression
+              </h2>
+              {loadingSteps && (
+                <span className="text-[11px] text-slate-400">Loading…</span>
+              )}
+              {errorSteps && (
+                <span className="text-[11px] text-red-300">{errorSteps}</span>
+              )}
+            </div>
+            {!stepsData || stepsData.sequences.length === 0 ? (
+              <p className="text-xs text-slate-500">No step data available.</p>
+            ) : (
+              <div className="space-y-3">
+                {stepsData.sequences.map((seq) => (
+                  <div
+                    key={seq.sequence_id}
+                    className="rounded-lg border border-slate-800 bg-slate-950/60 p-3"
+                  >
+                    <div className="mb-2 text-xs font-semibold text-slate-200">
+                      {seq.sequence_name || seq.sequence_id}
+                    </div>
+                    <div className="space-y-1 text-[11px] text-slate-300">
+                      {seq.steps.length === 0 && (
+                        <div className="text-slate-500">No steps defined.</div>
+                      )}
+                      {seq.steps.map((st) => (
+                        <div
+                          key={`${seq.sequence_id}-${st.step_number}`}
+                          className="flex items-center justify-between rounded border border-slate-800 bg-slate-900/70 px-2 py-1"
+                        >
+                          <span>Step {st.step_number}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-emerald-300">
+                              Reached {st.reached}
+                            </span>
+                            <span className="text-red-300">
+                              Errors {st.errors}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      ))}
+
+        {/* Errors table */}
+        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-200">
+              Recent sequence errors
+            </h2>
+            {loadingErrors && (
+              <span className="text-[11px] text-slate-400">Loading…</span>
+            )}
+            {errorErrors && (
+              <span className="text-[11px] text-red-300">{errorErrors}</span>
+            )}
+          </div>
+          {!errorsData ||
+          (errorsData.enrollmentErrors.length === 0 &&
+            errorsData.messageErrors.length === 0) ? (
+            <p className="text-xs text-slate-500">No recent errors.</p>
+          ) : (
+            <div className="space-y-3">
+              {errorsData.enrollmentErrors.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold text-slate-300">
+                    Enrollment errors
+                  </div>
+                  <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                    {errorsData.enrollmentErrors.map((e) => (
+                      <li
+                        key={e.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-slate-400">
+                            {new Date(e.created_at).toLocaleString()}
+                          </span>
+                          <span>
+                            Seq {e.sequence_id} · Prop {e.property_id} · Step{" "}
+                            {e.current_step}
+                          </span>
+                          {e.last_error && (
+                            <span className="text-red-300">{e.last_error}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {e.next_run_at && (
+                            <span className="text-[11px] text-slate-400">
+                              Next: {new Date(e.next_run_at).toLocaleString()}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => handleResetError(e.id)}
+                            className="rounded bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-100 hover:bg-slate-700"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {errorsData.messageErrors.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold text-slate-300">
+                    Message send failures
+                  </div>
+                  <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                    {errorsData.messageErrors.map((m) => (
+                      <li
+                        key={m.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-slate-400">
+                            {new Date(m.created_at).toLocaleString()}
+                          </span>
+                          <span>
+                            Prop {m.property_id} · Source {m.source ?? "n/a"}
+                          </span>
+                          {m.error_message && (
+                            <span className="text-red-300">
+                              {m.error_message}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-red-300">
+                          Status {m.status}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
