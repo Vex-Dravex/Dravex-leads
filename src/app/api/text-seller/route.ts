@@ -164,6 +164,7 @@ List price: $${Number(price).toLocaleString()}`;
           from_number: fromNumber!,
           body: bodyText,
           status: "sent",
+          source: "manual",
           provider_message_sid: message?.sid ?? null,
           error_message: null,
         });
@@ -197,6 +198,7 @@ List price: $${Number(price).toLocaleString()}`;
           from_number: fromNumber || "",
           body: "",
           status: "failed",
+          source: "manual",
           provider_message_sid: null,
           error_message: error?.message ?? "SMS failed",
         });
