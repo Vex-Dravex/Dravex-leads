@@ -15,27 +15,20 @@ const mapFollowup = (row: any) => ({
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { propertyId, title, dueAt } = body;
+    const { propertyId, title, dueAt, userId } = body;
 
-    if (!propertyId) {
+    if (!propertyId || !userId) {
       return NextResponse.json(
-        { error: "propertyId is required" },
+        { error: "propertyId and userId are required" },
         { status: 400 }
       );
-    }
-
-    const userResp = await supabase.auth.getUser();
-    const user = userResp.data.user;
-
-    if (!user) {
-      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
     }
 
     const { data, error } = await supabase
       .from("property_followups")
       .insert({
         property_id: propertyId,
-        user_id: user.id,
+        user_id: userId,
         title: title || "Follow up",
         due_at: dueAt || new Date().toISOString(),
       })

@@ -284,6 +284,7 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId: selectedProperty.id,
+          userId: user.id,
           title,
           dueAt: due.toISOString(),
         }),
