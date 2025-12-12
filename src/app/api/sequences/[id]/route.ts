@@ -25,9 +25,21 @@ export async function GET(
       .eq("id", id)
       .maybeSingle();
 
-    if (seqError || !sequence) {
+    if (seqError) {
+      console.error("GET /api/sequences/[id] sequence error:", seqError);
       return NextResponse.json(
-        { error: "Failed to load sequence" },
+        {
+          error: "Failed to load sequence",
+          details: seqError.message,
+          code: seqError.code,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!sequence) {
+      return NextResponse.json(
+        { error: "Sequence not found", id },
         { status: 404 }
       );
     }
@@ -41,14 +53,20 @@ export async function GET(
       .order("step_number", { ascending: true });
 
     if (stepsError) {
+      console.error("GET /api/sequences/[id] steps error:", stepsError);
       return NextResponse.json(
-        { error: "Failed to load steps" },
+        {
+          error: "Failed to load steps",
+          details: stepsError.message,
+          code: stepsError.code,
+        },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ sequence, steps: steps ?? [] });
   } catch (err: any) {
+    console.error("GET /api/sequences/[id] unexpected error:", err);
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 }
