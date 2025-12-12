@@ -9,8 +9,7 @@ type SequenceStep = {
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient({ cookies });
     const body = await req.json();
     const { propertyId, sequenceId } = body || {};
 
@@ -79,8 +78,7 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient({ cookies });
     const body = await req.json();
     const { enrollmentId, action } = body || {};
 
@@ -166,8 +164,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient({ cookies });
     const body = await req.json();
     const { enrollmentId } = body || {};
 
