@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
+export const runtime = "nodejs"; // IMPORTANT: run this route on Node, not Edge
+
 type SequenceStep = {
   step_number: number;
   delay_minutes: number;
@@ -235,4 +237,5 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
 
