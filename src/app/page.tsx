@@ -1,7 +1,12 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState, ChangeEvent } from "react";
-import type { Property, PropertyFollowUp, SavedSearch } from "@/lib/types";
+import type {
+  Property,
+  PropertyFollowUp,
+  PropertySmsMessage,
+  SavedSearch,
+} from "@/lib/types";
 import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
@@ -47,6 +52,9 @@ export default function HomePage() {
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [smsMessages, setSmsMessages] = useState<PropertySmsMessage[]>([]);
+  const [smsLoading, setSmsLoading] = useState(false);
+  const [smsError, setSmsError] = useState<string | null>(null);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [isLoadingSavedSearches, setIsLoadingSavedSearches] = useState(false);
   const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
@@ -521,6 +529,55 @@ export default function HomePage() {
     }
   };
 
+  useEffect(() => {
+    if (!selectedProperty || !user) {
+      setSmsMessages([]);
+      setSmsError(null);
+      return;
+    }
+
+    const loadSms = async () => {
+      try {
+        setSmsLoading(true);
+        setSmsError(null);
+
+        const { data, error } = await supabase
+          .from("property_sms_messages")
+          .select("*")
+          .eq("property_id", selectedProperty.id)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        if (error) {
+          setSmsError("Could not load SMS history.");
+          return;
+        }
+
+        const mapped: PropertySmsMessage[] = (data ?? []).map((row: any) => ({
+          id: row.id,
+          propertyId: row.property_id,
+          userId: row.user_id,
+          toNumber: row.to_number,
+          fromNumber: row.from_number,
+          body: row.body,
+          status: (row.status as "sent" | "failed") ?? "sent",
+          providerMessageSid: row.provider_message_sid,
+          errorMessage: row.error_message,
+          createdAt: row.created_at,
+        }));
+
+        setSmsMessages(mapped);
+      } catch (err) {
+        setSmsError("Could not load SMS history.");
+      } finally {
+        setSmsLoading(false);
+      }
+    };
+
+    loadSms();
+  }, [selectedProperty, user]);
+
   // Load notes for selected property (scoped to user)
   useEffect(() => {
     // Clear notes when switching properties or logging out
@@ -801,6 +858,13 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId: selectedProperty.id,
+          userId: user?.id ?? null,
+          address: selectedProperty.address,
+          city: selectedProperty.city,
+          state: selectedProperty.state,
+          zip: selectedProperty.zip,
+          price: selectedProperty.listPrice,
+          to: selectedProperty.sellerPhone,
         }),
       });
 
@@ -1463,15 +1527,22 @@ export default function HomePage() {
                           onClick={async (e) => {
                             e.stopPropagation();
                             try {
-                              const res = await fetch("/api/text-seller", {
-                                method: "POST",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                },
-                                body: JSON.stringify({
-                                  propertyId: p.id,
-                                }),
-                              });
+                            const res = await fetch("/api/text-seller", {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                propertyId: p.id,
+                                userId: user?.id ?? null,
+                                address: p.address,
+                                city: p.city,
+                                state: p.state,
+                                zip: p.zip,
+                                price: p.listPrice,
+                                to: p.sellerPhone,
+                              }),
+                            });
 
                               const payload = await res.json();
 
@@ -1743,6 +1814,76 @@ export default function HomePage() {
                   </div>
                 </section>
               )}
+
+              {/* SMS Activity */}
+              <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    SMS Activity
+                  </div>
+                  {smsError && (
+                    <span className="text-[11px] text-red-300">
+                      {smsError}
+                    </span>
+                  )}
+                </div>
+
+                {!user ? (
+                  <p className="text-xs text-slate-500">
+                    Sign in to view SMS history for this deal.
+                  </p>
+                ) : smsLoading ? (
+                  <p className="text-xs text-slate-400">
+                    Loading messages…
+                  </p>
+                ) : smsMessages.length === 0 ? (
+                  <p className="text-xs text-slate-500">
+                    No SMS activity yet. Use the Text button to send the first
+                    message.
+                  </p>
+                ) : (
+                  <ul className="space-y-2 text-xs">
+                    {smsMessages.map((m) => (
+                      <li
+                        key={m.id}
+                        className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-slate-400">
+                            {new Date(m.createdAt).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                          <span
+                            className={
+                              "text-[10px] font-semibold uppercase tracking-[0.16em] " +
+                              (m.status === "sent"
+                                ? "text-emerald-300"
+                                : "text-red-300")
+                            }
+                          >
+                            {m.status.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          To: <span className="text-slate-100">{m.toNumber}</span>
+                        </div>
+                        <div className="mt-1 whitespace-pre-wrap text-[11px] text-slate-100">
+                          {m.body}
+                        </div>
+                        {m.status === "failed" && m.errorMessage && (
+                          <div className="mt-1 text-[11px] text-red-300">
+                            Error: {m.errorMessage}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
 
               {/* Notes */}
               <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">

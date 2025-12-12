@@ -4,6 +4,7 @@ import twilio from "twilio";
 
 type Payload = {
   propertyId?: string;
+  userId?: string | null;
   to?: string | null;
   address?: string;
   city?: string;
@@ -37,14 +38,11 @@ export async function POST(req: NextRequest) {
     let city: string | undefined;
     let state: string | undefined;
     let zip: string | undefined;
-    let price: number | undefined;
-    let sellerPhone: string | null | undefined;
+  let price: number | undefined;
+  let sellerPhone: string | null | undefined;
 
-    if ("propertyId" in body && body.propertyId) {
-      if (!supabaseUrl || !supabaseServiceKey) {
-        console.error(
-          "[/api/text-seller] Missing Supabase credentials for property lookup."
-        );
+  if ("propertyId" in body && body.propertyId) {
+    if (!supabaseUrl || !supabaseServiceKey) {
         return NextResponse.json(
           { error: "Server not configured for property lookup" },
           { status: 500 }
@@ -127,11 +125,32 @@ export async function POST(req: NextRequest) {
 ${address}, ${city}, ${state} ${zip}
 List price: $${Number(price).toLocaleString()}`;
 
-    await client.messages.create({
+    const message = await client.messages.create({
       from: fromNumber,
       to: toNumber,
       body: bodyText,
     });
+
+    if (supabaseUrl && supabaseServiceKey && body.propertyId) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+
+        await supabase.from("property_sms_messages").insert({
+          property_id: body.propertyId,
+          user_id: body.userId ?? null,
+          to_number: toNumber,
+          from_number: fromNumber!,
+          body: bodyText,
+          status: "sent",
+          provider_message_sid: message?.sid ?? null,
+          error_message: null,
+        });
+      } catch {
+        // Swallow logging errors for now
+      }
+    }
 
     const usedSellerPhone =
       !!(sellerPhone && sellerPhone.toString().trim()) &&
@@ -142,7 +161,30 @@ List price: $${Number(price).toLocaleString()}`;
       usedSellerPhone,
     });
   } catch (error: any) {
-    console.error("[/api/text-seller] error:", error);
+    if (supabaseUrl && supabaseServiceKey && body?.propertyId) {
+      try {
+        const toNumberFallback =
+          (body as any).to?.trim?.() ||
+          (body as any)?.sellerPhone ||
+          (testToNumber ?? "").trim();
+        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+        await supabase.from("property_sms_messages").insert({
+          property_id: body.propertyId,
+          user_id: body.userId ?? null,
+          to_number: toNumberFallback || "",
+          from_number: fromNumber || "",
+          body: "",
+          status: "failed",
+          provider_message_sid: null,
+          error_message: error?.message ?? "SMS failed",
+        });
+      } catch {
+        // ignore logging failures
+      }
+    }
+
     return NextResponse.json(
       { error: "Failed to send SMS", message: error?.message },
       { status: 500 }

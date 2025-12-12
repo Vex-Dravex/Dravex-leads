@@ -85,6 +85,19 @@ export type PropertyFollowUp = {
   status: "pending" | "completed";
 };
 
+export type PropertySmsMessage = {
+  id: string;
+  propertyId: string;
+  userId: string | null;
+  toNumber: string;
+  fromNumber: string;
+  body: string;
+  status: "sent" | "failed";
+  providerMessageSid: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+};
+
 export type SavedSearch = {
   id: string;
   userId: string;
