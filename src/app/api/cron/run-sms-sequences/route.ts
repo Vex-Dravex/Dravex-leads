@@ -68,6 +68,14 @@ type UserSendWindow = {
   timezone: string | null;
 };
 
+const DEFAULT_WINDOW: UserSendWindow = {
+  user_id: "default",
+  enabled: true,
+  quiet_hours_start: "21:00",
+  quiet_hours_end: "08:00",
+  timezone: "America/Los_Angeles",
+};
+
 const renderTemplate = (template: string, property: PropertyRow) =>
   (template || "")
     .replace(/{{address}}/g, property.address ?? "")
@@ -85,8 +93,9 @@ const isWithinQuietHours = (
   setting: UserSendWindow | null,
   now: Date
 ) => {
-  if (!setting || !setting.enabled) return false;
-  const tz = setting.timezone || "UTC";
+  const effective = setting && setting.enabled ? setting : DEFAULT_WINDOW;
+  if (!effective.enabled) return false;
+  const tz = effective.timezone || DEFAULT_WINDOW.timezone || "UTC";
 
   const formatter = new Intl.DateTimeFormat("en-US", {
     hour12: false,
@@ -100,8 +109,8 @@ const isWithinQuietHours = (
   const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
   const currentMinutes = hour * 60 + minute;
 
-  const startParts = (setting.quiet_hours_start || "00:00").split(":");
-  const endParts = (setting.quiet_hours_end || "00:00").split(":");
+  const startParts = (effective.quiet_hours_start || "00:00").split(":");
+  const endParts = (effective.quiet_hours_end || "00:00").split(":");
   const startMinutes = Number(startParts[0]) * 60 + Number(startParts[1]);
   const endMinutes = Number(endParts[0]) * 60 + Number(endParts[1]);
 
@@ -115,9 +124,10 @@ const isWithinQuietHours = (
 };
 
 const nextAllowedTime = (setting: UserSendWindow | null, now: Date) => {
-  if (!setting || !setting.enabled || !setting.quiet_hours_end) return null;
-  const tz = setting.timezone || "UTC";
-  const [endHourStr, endMinStr] = setting.quiet_hours_end.split(":");
+  const effective = setting && setting.enabled ? setting : DEFAULT_WINDOW;
+  if (!effective.enabled || !effective.quiet_hours_end) return null;
+  const tz = effective.timezone || DEFAULT_WINDOW.timezone || "UTC";
+  const [endHourStr, endMinStr] = effective.quiet_hours_end.split(":");
   const endHour = Number(endHourStr);
   const endMin = Number(endMinStr);
   const target = new Date(now);
@@ -150,14 +160,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const now = new Date().toISOString();
+    const testNowParam =
+      process.env.NODE_ENV !== "production"
+        ? req.nextUrl?.searchParams.get("testNow")
+        : null;
+    const nowIso = testNowParam ?? new Date().toISOString();
+    const nowDateForQuery = new Date(nowIso).toISOString();
 
     const { data: enrollments, error: enrollmentsError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .select("*")
       .is("completed_at", null)
       .eq("is_paused", false)
-      .lte("next_run_at", now)
+      .lte("next_run_at", nowDateForQuery)
       .order("next_run_at", { ascending: true })
       .limit(20);
 
@@ -179,11 +194,17 @@ export async function POST(req: NextRequest) {
 
     for (const enrollment of enrollments as Enrollment[]) {
       try {
-        const { data: sendSetting } = await supabaseAdmin
+        const { data: sendSetting, error: settingsError } = await supabaseAdmin
           .from("user_smart_send_settings")
           .select("user_id, enabled, quiet_hours_start, quiet_hours_end, timezone")
           .eq("user_id", enrollment.user_id)
           .maybeSingle();
+        if (settingsError) {
+          console.error(
+            "[cron] Failed to load send window; using default",
+            settingsError
+          );
+        }
 
         const { data: step, error: stepError } = await supabaseAdmin
           .from("sms_sequence_steps")
