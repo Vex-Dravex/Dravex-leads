@@ -14,10 +14,10 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 
 export async function GET(
   _req: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = context.params;
+    const { id } = await context.params;
 
     const { data: sequence, error: seqError } = await supabaseAdmin
       .from("sms_sequences")
@@ -58,10 +58,10 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = context.params;
+    const { id } = await context.params;
     const body = await req.json();
     const { name, is_active } = body || {};
 
@@ -99,10 +99,10 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = context.params;
+    const { id } = await context.params;
     const { error } = await supabaseAdmin
       .from("sms_sequences")
       .delete()
