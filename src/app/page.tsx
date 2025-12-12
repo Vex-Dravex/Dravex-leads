@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState, ChangeEvent } from "react";
-import type { Property, PropertyFollowUp } from "@/lib/types";
+import type { Property, PropertyFollowUp, SavedSearch } from "@/lib/types";
 import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
 
@@ -47,6 +47,10 @@ export default function HomePage() {
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  const [isLoadingSavedSearches, setIsLoadingSavedSearches] = useState(false);
+  const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
+  const [newSearchName, setNewSearchName] = useState("");
 
   // Global upcoming follow-ups list (for current user)
   const [followups, setFollowups] = useState<PropertyFollowUp[]>([]);
@@ -171,6 +175,59 @@ export default function HomePage() {
       setFollowups([]);
     }
   }, [user]);
+
+  useEffect(() => {
+    const loadSavedSearches = async () => {
+      if (!user) {
+        setSavedSearches([]);
+        return;
+      }
+
+      setIsLoadingSavedSearches(true);
+      setSavedSearchError(null);
+
+      try {
+        const res = await fetch(`/api/saved-searches?userId=${user.id}`);
+        const payload = await res.json();
+
+        if (!res.ok) {
+          setSavedSearchError(
+            (payload as any)?.error || "Could not load saved searches."
+          );
+          return;
+        }
+
+        setSavedSearches((payload as any).savedSearches ?? []);
+      } catch (err) {
+        setSavedSearchError("Could not load saved searches.");
+      } finally {
+        setIsLoadingSavedSearches(false);
+      }
+    };
+
+    loadSavedSearches();
+  }, [user]);
+
+  const getCurrentFilters = () => ({
+    search,
+    minPrice,
+    maxPrice,
+    maxDom,
+    minMotivation,
+    status,
+    leadStageFilter,
+  });
+
+  const applyFilters = (filters: any) => {
+    if (!filters) return;
+    setSearch(filters.search ?? "");
+    setMinPrice(filters.minPrice ?? "");
+    setMaxPrice(filters.maxPrice ?? "");
+    setMaxDom(filters.maxDom ?? "");
+    setMinMotivation(filters.minMotivation ?? "");
+    setStatus(filters.status ?? "All");
+    setLeadStageFilter(filters.leadStageFilter ?? "All");
+  };
 
   const handleSignIn = async () => {
     try {
@@ -388,6 +445,79 @@ export default function HomePage() {
       setNoteError("Could not save notes.");
     } finally {
       setIsSavingNote(false);
+    }
+  };
+
+  const handleSaveCurrentSearch = async () => {
+    if (!user) {
+      showToast("error", "Sign in to save searches.");
+      return;
+    }
+    const name = newSearchName.trim();
+    if (!name) {
+      showToast("error", "Give this search a name.");
+      return;
+    }
+
+    try {
+      const filters = getCurrentFilters();
+      const res = await fetch("/api/saved-searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          name,
+          filters,
+        }),
+      });
+
+      const payload = await res.json();
+
+      if (!res.ok) {
+        showToast(
+          "error",
+          (payload as any)?.error || "Could not save search."
+        );
+        return;
+      }
+
+      const created = (payload as any).savedSearch as SavedSearch;
+      setSavedSearches((prev) => [created, ...prev]);
+      setNewSearchName("");
+      showToast("success", "Search saved.");
+    } catch (err) {
+      showToast("error", "Could not save search.");
+    }
+  };
+
+  const handleApplySavedSearch = (saved: SavedSearch) => {
+    applyFilters(saved.filters);
+    showToast("success", `Applied "${saved.name}".`);
+  };
+
+  const handleDeleteSavedSearch = async (id: string) => {
+    if (!user) return;
+
+    try {
+      const res = await fetch("/api/saved-searches", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, userId: user.id }),
+      });
+
+      const payload = await res.json();
+
+      if (!res.ok) {
+        showToast(
+          "error",
+          (payload as any)?.error || "Could not delete search."
+        );
+        return;
+      }
+
+      setSavedSearches((prev) => prev.filter((s) => s.id !== id));
+    } catch (err) {
+      showToast("error", "Could not delete search.");
     }
   };
 
@@ -1020,6 +1150,79 @@ export default function HomePage() {
                   Send reset link
                 </button>
               </form>
+            )}
+          </div>
+
+          {/* Saved Searches */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Saved Searches
+              </h2>
+              {savedSearchError && (
+                <span className="text-[11px] text-red-300">
+                  {savedSearchError}
+                </span>
+              )}
+            </div>
+
+            {!user ? (
+              <div className="py-2 text-xs text-slate-500">
+                Sign in to save and reuse your favorite filters.
+              </div>
+            ) : (
+              <>
+                <div className="mb-3 flex gap-2 text-xs">
+                  <input
+                    type="text"
+                    placeholder="Name this search..."
+                    value={newSearchName}
+                    onChange={(e) => setNewSearchName(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-1.5 text-xs text-slate-100 outline-none ring-indigo-500/60 focus:ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveCurrentSearch}
+                    className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-indigo-500"
+                  >
+                    Save
+                  </button>
+                </div>
+
+                {isLoadingSavedSearches ? (
+                  <div className="py-1 text-xs text-slate-400">
+                    Loading saved searches…
+                  </div>
+                ) : savedSearches.length === 0 ? (
+                  <div className="py-1 text-xs text-slate-500">
+                    No saved searches yet. Set your filters and save one.
+                  </div>
+                ) : (
+                  <ul className="space-y-1 text-xs">
+                    {savedSearches.map((s) => (
+                      <li
+                        key={s.id}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-1.5"
+                      >
+                        <button
+                          type="button"
+                          className="flex-1 text-left text-slate-100 hover:underline"
+                          onClick={() => handleApplySavedSearch(s)}
+                        >
+                          {s.name}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-[11px] text-slate-500 hover:text-red-300"
+                          onClick={() => handleDeleteSavedSearch(s.id)}
+                        >
+                          Delete
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </div>
 

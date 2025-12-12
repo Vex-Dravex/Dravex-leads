@@ -85,3 +85,10 @@ export type PropertyFollowUp = {
   status: "pending" | "completed";
 };
 
+export type SavedSearch = {
+  id: string;
+  userId: string;
+  name: string;
+  filters: any;
+  createdAt: string;
+};
