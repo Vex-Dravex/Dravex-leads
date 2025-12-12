@@ -78,8 +78,11 @@ export async function GET() {
       status: row.status,
       motivationScore: Number(row.motivation_score ?? 0),
       sellerPhone: row.seller_phone ?? null,
-      leadStage: (row.lead_stage as Property["leadStage"]) ?? "new",
-      createdAt: row.created_at ?? undefined,
+      leadStage:
+        row.lead_stage !== null && row.lead_stage !== undefined
+          ? (row.lead_stage as Property["leadStage"])
+          : null,
+      createdAt: row.created_at ?? "",
       mlsId: row.mls_id ?? null,
     }));
 
@@ -95,4 +98,3 @@ export async function GET() {
     );
   }
 }
-
