@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     // Get first step (lowest step_number) for the sequence
     const { data: stepData, error: stepError } = await supabase
       .from("sms_sequence_steps")
-      .select<"*", SequenceStep>("step_number, delay_minutes")
+      .select("step_number, delay_minutes")
       .eq("sequence_id", sequenceId)
       .order("step_number", { ascending: true })
       .limit(1)
@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const delayMinutes = stepData.delay_minutes ?? 0;
+    const firstStep = stepData as SequenceStep;
+    const delayMinutes = firstStep.delay_minutes ?? 0;
     const nextRunAt = new Date(
       Date.now() + delayMinutes * 60 * 1000
     ).toISOString();
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
         sequence_id: sequenceId,
         property_id: propertyId,
         user_id: user.id,
-        current_step: stepData.step_number,
+        current_step: firstStep.step_number,
         next_run_at: nextRunAt,
         is_paused: false,
       })
@@ -234,3 +235,4 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
