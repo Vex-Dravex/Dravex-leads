@@ -68,7 +68,20 @@ export default function AutomationAnalyticsPage() {
           .eq("user_id", userId);
 
         if (enrollErr) throw new Error(enrollErr.message);
-        setEnrollments((enrollData as EnrollmentRow[]) ?? []);
+        const mappedEnrollments: EnrollmentRow[] = (enrollData as any[])?.map(
+          (row) => ({
+            id: row.id,
+            sequence_id: row.sequence_id,
+            current_step: row.current_step,
+            completed_at: row.completed_at,
+            next_run_at: row.next_run_at,
+            last_error: row.last_error,
+            sequence: row.sequence
+              ? { name: (Array.isArray(row.sequence) ? row.sequence[0]?.name : row.sequence.name) ?? "" }
+              : null,
+          })
+        );
+        setEnrollments(mappedEnrollments ?? []);
       } catch (err: any) {
         setError(err?.message || "Failed to load analytics");
       } finally {
@@ -356,4 +369,3 @@ function ErrorTable() {
     </div>
   );
 }
-
