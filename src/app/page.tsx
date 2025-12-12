@@ -1296,90 +1296,242 @@ export default function HomePage() {
 
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 text-sm">
               {/* Price / ARV / Spread */}
-              {/* ... existing Numbers section unchanged ... */}
-
-              {/* Status & Motivation */}
-              {/* ... existing Status & Score section unchanged ... */}
-
-              {/* Property Facts */}
-              {/* ... existing Property Facts section unchanged ... */}
-
-              {/* 🔹 Seller Contact (Step 5 & 6 UI) */}
               <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    Seller Contact
-                  </div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  Numbers
                 </div>
-
-                <div className="space-y-2 text-xs text-slate-300">
+                <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <div className="text-slate-400">Seller Phone</div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <input
-                        type="tel"
-                        className="flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none focus:ring focus:ring-indigo-500/60"
-                        placeholder="Enter seller phone"
-                        value={sellerPhone}
-                        onChange={(e) => setSellerPhone(e.target.value)}
-                        onBlur={handleSaveSellerPhone}
-                      />
-                      {isSavingPhone && (
-                        <span className="text-[11px] text-slate-400">
-                          Saving…
-                        </span>
-                      )}
+                    <div className="text-slate-400">List Price</div>
+                    <div className="text-sm font-semibold text-slate-100">
+                      {formatMoney(selectedProperty.listPrice)}
                     </div>
-                    {phoneError && (
-                      <p className="mt-1 text-[11px] text-red-300">
-                        {phoneError}
-                      </p>
-                    )}
                   </div>
-
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      disabled={!hasDrawerPhone}
-                      onClick={handleCallSellerFromDetail}
-                      className={
-                        "flex-1 rounded-md px-3 py-2 text-[11px] font-semibold " +
-                        (hasDrawerPhone
-                          ? "bg-emerald-600 text-slate-50 hover:bg-emerald-500"
-                          : "bg-slate-800 text-slate-500 cursor-not-allowed")
-                      }
-                    >
-                      Call Seller
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!hasDrawerPhone || isTextingSeller}
-                      onClick={handleTextSellerFromDetail}
-                      className={
-                        "flex-1 rounded-md px-3 py-2 text-[11px] font-semibold " +
-                        (hasDrawerPhone
-                          ? "bg-indigo-600 text-slate-50 hover:bg-indigo-500"
-                          : "bg-slate-800 text-slate-500 cursor-not-allowed")
-                      }
-                    >
-                      {isTextingSeller ? "Sending…" : "Text Seller"}
-                    </button>
+                  <div>
+                    <div className="text-slate-400">Estimated ARV</div>
+                    <div className="text-sm font-semibold text-slate-100">
+                      {formatMoneyOptional(selectedProperty.arv)}
+                    </div>
                   </div>
-                  {textError && (
-                    <p className="mt-1 text-[11px] text-red-300">
-                      {textError}
-                    </p>
-                  )}
-
-                  <p className="mt-2 text-[11px] text-slate-400">
-                    In production, these call and text actions can be extended
-                    to log outcomes and replies directly into this deal.
-                  </p>
+                  <div>
+                    <div className="text-slate-400">Spread</div>
+                    <div className="text-sm font-semibold text-emerald-300">
+                      {selectedProperty.arv !== null &&
+                      selectedProperty.arv !== undefined
+                        ? formatMoney(
+                            selectedProperty.arv - selectedProperty.listPrice
+                          )
+                        : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">DOM</div>
+                    <div className="text-sm font-semibold text-slate-100">
+                      {selectedProperty.dom !== null &&
+                      selectedProperty.dom !== undefined
+                        ? `${selectedProperty.dom} days`
+                        : "—"}
+                    </div>
+                  </div>
                 </div>
               </section>
 
+              {/* Status & Motivation */}
+              <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Status &amp; Score
+                  </div>
+                  <span
+                    className={
+                      "rounded-full px-2 py-0.5 text-[11px] font-semibold " +
+                      (selectedProperty.status === "Active"
+                        ? "border border-emerald-500/60 bg-emerald-500/10 text-emerald-200"
+                        : selectedProperty.status === "Pending"
+                        ? "border border-amber-500/60 bg-amber-500/10 text-amber-200"
+                        : "border border-slate-500/60 bg-slate-500/10 text-slate-200")
+                    }
+                  >
+                    {selectedProperty.status}
+                  </span>
+                </div>
+
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="text-slate-300">Lead Stage</span>
+                  <select
+                    value={selectedProperty.leadStage ?? "new"}
+                    onChange={(e) =>
+                      updateLeadStage(
+                        selectedProperty.id,
+                        e.target.value as
+                          | "new"
+                          | "contacted"
+                          | "follow_up"
+                          | "dead"
+                      )
+                    }
+                    className="rounded-md border border-slate-700 bg-slate-900/70 px-2 py-1 text-[11px] text-slate-100 outline-none focus:ring focus:ring-indigo-500/60"
+                  >
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="follow_up">Follow-up</option>
+                    <option value="dead">Dead</option>
+                  </select>
+                </div>
+
+                <div className="mt-1 text-xs text-slate-400">
+                  Motivation score is a rough signal of seller pain and deal
+                  potential. Higher is better.
+                </div>
+
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-300">Motivation</span>
+                    <span className="font-semibold text-slate-100">
+                      {selectedProperty.motivationScore}/100
+                    </span>
+                  </div>
+                  <div className="mt-1 h-2 w-full rounded-full bg-slate-800">
+                    <div
+                      className="h-2 rounded-full bg-emerald-400"
+                      style={{
+                        width: `${selectedProperty.motivationScore}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Property Facts */}
+              <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  Property Facts
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs text-slate-300">
+                  <div>
+                    <div className="text-slate-400">Beds</div>
+                    <div className="text-sm font-semibold">
+                      {formatNumber(selectedProperty.beds)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Baths</div>
+                    <div className="text-sm font-semibold">
+                      {formatNumber(selectedProperty.baths, 1)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Square Feet</div>
+                    <div className="text-sm font-semibold">
+                      {formatNumber(selectedProperty.sqft)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400">Zip Code</div>
+                    <div className="text-sm font-semibold">
+                      {selectedProperty.zip}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Seller Contact – only if phone exists */}
+              {selectedProperty.sellerPhone && (
+                <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Seller Contact
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-slate-300">
+                    <div>
+                      <div className="text-slate-400">Phone</div>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <a
+                          href={`tel:${selectedProperty.sellerPhone}`}
+                          className="text-sm font-semibold text-emerald-300 hover:underline"
+                        >
+                          {selectedProperty.sellerPhone}
+                        </a>
+                        <button
+                          type="button"
+                          className="rounded border border-slate-700 px-2 py-0.5 text-[11px] text-slate-200 hover:bg-slate-800/80"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(
+                                selectedProperty.sellerPhone || ""
+                              );
+                              showToast(
+                                "success",
+                                "Seller phone copied to clipboard."
+                              );
+                            } catch {
+                              showToast(
+                                "error",
+                                "Could not copy phone number."
+                              );
+                            }
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Use this number for direct calls or SMS campaigns. In
+                      production, we can track call outcomes and responses here
+                      too.
+                    </p>
+                  </div>
+                </section>
+              )}
+
               {/* Notes */}
-              {/* ... existing Notes section unchanged ... */}
+              <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Call Prep / Notes
+                  </div>
+                  {noteError && (
+                    <span className="text-[11px] text-red-300">
+                      {noteError}
+                    </span>
+                  )}
+                </div>
+                {!user ? (
+                  <p className="text-xs text-slate-500">
+                    Sign in to write and save notes for this deal.
+                  </p>
+                ) : (
+                  <>
+                    <p className="mb-2 text-xs text-slate-400">
+                      These notes are stored in Supabase for your account and
+                      this specific property.
+                    </p>
+                    <textarea
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="Ex: Tenant just moved out, needs some work, seller wants to be out in 30 days..."
+                      className="h-24 w-full rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-xs text-slate-100 outline-none ring-indigo-500/60 focus:ring"
+                    />
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <button
+                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:bg-slate-800/80 disabled:opacity-60"
+                        onClick={handleSaveNotes}
+                        disabled={isSavingNote}
+                      >
+                        {isSavingNote ? "Saving…" : "Save notes"}
+                      </button>
+                      {feedbackMessage && (
+                        <span className="text-[11px] text-slate-300">
+                          {feedbackMessage}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </section>
             </div>
 
             <div className="border-t border-slate-800 px-4 py-3 flex items-center justify-between gap-3">
