@@ -1071,6 +1071,12 @@ export default function HomePage() {
                 >
                   Sign out
                 </button>
+                <a
+                  href="/automation/sequences"
+                  className="rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold hover:bg-slate-800/80"
+                >
+                  Automation
+                </a>
               </>
             ) : (
               <span className="text-slate-400 text-[11px] md:text-xs">
