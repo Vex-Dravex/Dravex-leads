@@ -14,9 +14,10 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const body = await req.json();
     const { delay_minutes, body_template } = body || {};
 
@@ -34,7 +35,7 @@ export async function POST(
     const { data: maxStep, error: maxErr } = await supabaseAdmin
       .from("sms_sequence_steps")
       .select("step_number")
-      .eq("sequence_id", params.id)
+      .eq("sequence_id", id)
       .order("step_number", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -51,7 +52,7 @@ export async function POST(
     const { error } = await supabaseAdmin
       .from("sms_sequence_steps")
       .insert({
-        sequence_id: params.id,
+        sequence_id: id,
         step_number: nextStepNumber,
         delay_minutes,
         body_template,
@@ -75,9 +76,10 @@ export async function POST(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const body = await req.json();
     const { stepId, delay_minutes, body_template } = body || {};
 
@@ -103,7 +105,7 @@ export async function PATCH(
       .from("sms_sequence_steps")
       .update(updates)
       .eq("id", stepId)
-      .eq("sequence_id", params.id);
+      .eq("sequence_id", id);
 
     if (error) {
       return NextResponse.json(
@@ -123,9 +125,10 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const body = await req.json();
     const { stepId } = body || {};
 
@@ -140,7 +143,7 @@ export async function DELETE(
       .from("sms_sequence_steps")
       .delete()
       .eq("id", stepId)
-      .eq("sequence_id", params.id);
+      .eq("sequence_id", id);
 
     if (error) {
       return NextResponse.json(
