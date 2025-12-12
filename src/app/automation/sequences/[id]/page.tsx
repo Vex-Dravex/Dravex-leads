@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import type { Sequence, SequenceStep } from "@/types/sequences";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function SequenceDetailPage() {
   const params = useParams<{ id: string }>();
@@ -31,12 +32,6 @@ export default function SequenceDetailPage() {
           return;
         }
         const seqData = payload.sequence as Sequence;
-
-        if (seqError || !seqData) {
-          setError("Could not load sequence");
-          setLoading(false);
-          return;
-        }
         setSequence(seqData);
 
         const stepsData = (payload.steps as SequenceStep[]) ?? [];
