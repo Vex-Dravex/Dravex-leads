@@ -21,10 +21,11 @@ const fromNumber = process.env.TWILIO_FROM_NUMBER;
 const testToNumber = process.env.TWILIO_TEST_TO_NUMBER;
 
 export async function POST(req: NextRequest) {
+  let body: Payload | null = null;
   try {
-    let body: Payload;
+    let parsed: Payload;
     try {
-      body = await req.json();
+      parsed = await req.json();
     } catch (parseError) {
       console.error("[/api/text-seller] Invalid JSON body", parseError);
       return NextResponse.json(
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    body = parsed;
 
     // Prepare property details (propertyId mode preferred).
     let address: string | undefined;
