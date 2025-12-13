@@ -72,19 +72,16 @@ export async function POST(req: NextRequest) {
 
   try {
     let external = null;
+    const externalIdOrApn = body.apn || body.externalId;
     if (provider === "mls") {
-      if (body.apn || body.externalId) {
-        external = await fetchMlsPropertyByExternalId(
-          (body as any).apn || (body as any).externalId
-        );
+      if (externalIdOrApn) {
+        external = await fetchMlsPropertyByExternalId(externalIdOrApn);
       } else if (baseAddress.address && baseAddress.city && baseAddress.state && baseAddress.zip) {
         external = await fetchMlsPropertyByAddress(baseAddress);
       }
     } else {
-      if (body.apn || body.externalId) {
-        external = await fetchPublicRecordByExternalId(
-          (body as any).apn || (body as any).externalId
-        );
+      if (externalIdOrApn) {
+        external = await fetchPublicRecordByExternalId(externalIdOrApn);
       } else if (baseAddress.address && baseAddress.city && baseAddress.state && baseAddress.zip) {
         external = await fetchPublicRecordByAddress(baseAddress);
       }

@@ -30,6 +30,7 @@ export type IntegrationLookupRequest = {
   state?: string;
   zip?: string;
   apn?: string;
+  externalId?: string;
   provider?: "mls" | "public_records";
 };
 
