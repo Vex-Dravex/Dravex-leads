@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest) {
 
     const { data: enrollment, error: fetchError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
-      .select("id, last_error, is_paused")
+      .select("id, is_paused")
       .eq("id", enrollmentId)
       .maybeSingle();
 
@@ -60,8 +60,6 @@ export async function PATCH(req: NextRequest) {
     const { error: updateError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .update({
-        last_error: null,
-        last_error_at: null,
         is_paused: false,
         next_run_at: new Date().toISOString(),
       })

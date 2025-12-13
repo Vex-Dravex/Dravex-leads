@@ -54,7 +54,7 @@ export async function GET(_req: NextRequest) {
 
     const { data: enrollments, error: enrError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
-      .select("sequence_id, current_step, last_error");
+      .select("sequence_id, current_step, is_paused");
 
     if (enrError) {
       console.error("[api/automation/analytics/steps] enrollments", {
@@ -108,7 +108,8 @@ export async function GET(_req: NextRequest) {
       Object.values(holder.steps).forEach((st) => {
         if (currentStep >= st.step_number) {
           st.reached += 1;
-          if (enr.last_error && currentStep === st.step_number) {
+          // Without explicit error fields, treat paused enrollments as needing attention.
+          if (enr.is_paused && currentStep === st.step_number) {
             st.errors += 1;
           }
         }

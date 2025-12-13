@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     const { data: enrollment, error: enrollmentError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .select(
-        "id, sequence_id, user_id, property_id, current_step, next_run_at, is_paused, completed_at, last_error, last_error_at, created_at, sequence:sms_sequences(name)"
+        "id, sequence_id, user_id, property_id, current_step, next_run_at, is_paused, completed_at, created_at, sequence:sms_sequences(name)"
       )
       .eq("property_id", propertyId)
       .eq("user_id", userId)

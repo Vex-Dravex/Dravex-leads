@@ -94,10 +94,10 @@ const setEnrollmentError = async (
     .from("sms_sequence_enrollments")
     .update({
       is_paused: true,
-      last_error: message,
-      last_error_at: new Date().toISOString(),
+      next_run_at: null,
     })
     .eq("id", enrollmentId);
+  console.error("[cron] enrollment error", { enrollmentId, message });
 };
 
 const renderTemplate = (template: string, property: PropertyRow) =>
@@ -243,8 +243,6 @@ export async function POST(req: NextRequest) {
             .update({
               completed_at: new Date().toISOString(),
               next_run_at: null,
-              last_error: "Missing step for current_step",
-              last_error_at: new Date().toISOString(),
             })
             .eq("id", enrollment.id);
           console.error("[cron] Missing step", {
@@ -311,7 +309,6 @@ export async function POST(req: NextRequest) {
             .from("sms_sequence_enrollments")
             .update({
               next_run_at: deferred,
-              last_error: "Skipped due to send window",
             })
             .eq("id", enrollment.id);
           continue;
@@ -352,8 +349,7 @@ export async function POST(req: NextRequest) {
             .from("sms_sequence_enrollments")
             .update({
               is_paused: true,
-              last_error: smsErr?.message ?? "Sequence SMS failed",
-              last_error_at: new Date().toISOString(),
+              next_run_at: null,
             })
             .eq("id", enrollment.id);
           console.error("[cron] Twilio send failed", {
@@ -385,7 +381,6 @@ export async function POST(req: NextRequest) {
             .update({
               current_step: nextStep.step_number,
               next_run_at: newNextRunAt,
-              last_error: null,
             })
             .eq("id", enrollment.id);
         } else {
@@ -394,7 +389,6 @@ export async function POST(req: NextRequest) {
             .update({
               completed_at: new Date().toISOString(),
               next_run_at: null,
-              last_error: null,
             })
             .eq("id", enrollment.id);
         }

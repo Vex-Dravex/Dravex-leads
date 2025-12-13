@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest) {
 
     const { error } = await supabaseAdmin
       .from("sms_sequence_enrollments")
-      .update({ last_error: null })
+      .update({ is_paused: false, next_run_at: new Date().toISOString() })
       .eq("id", enrollmentId);
 
     if (error) {
@@ -44,4 +44,3 @@ export async function PATCH(req: NextRequest) {
     );
   }
 }
-

@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     const { data: enrollments, error: enrError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .select(
-        "id, is_paused, completed_at, last_error"
+        "id, is_paused, completed_at"
       );
 
     if (enrError) {
@@ -73,9 +73,7 @@ export async function GET(req: NextRequest) {
     const completedEnrollments = (enrollments ?? []).filter(
       (e) => !!e.completed_at
     ).length;
-    const errorEnrollments = (enrollments ?? []).filter(
-      (e) => !!e.last_error
-    ).length;
+    const errorEnrollments = 0;
 
     return NextResponse.json({
       windowDays: days,

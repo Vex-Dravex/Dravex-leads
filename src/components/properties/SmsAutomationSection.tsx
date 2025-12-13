@@ -336,14 +336,9 @@ export function SmsAutomationSection({
               </span>
             </div>
           </div>
-          {enrollment.last_error && (
+          {enrollment.is_paused && (
             <div className="text-[11px] text-red-300">
-              {enrollment.last_error}
-              {enrollment.last_error_at && (
-                <span className="ml-2 text-slate-400">
-                  ({new Date(enrollment.last_error_at).toLocaleString()})
-                </span>
-              )}
+              Enrollment is paused{enrollment.status ? ` (${enrollment.status})` : ""}.
             </div>
           )}
 
@@ -376,7 +371,7 @@ export function SmsAutomationSection({
               >
                 {isSubmitting ? "Working…" : "Cancel"}
               </button>
-              {enrollment.last_error && (
+              {enrollment.is_paused && (
                 <button
                   type="button"
                   disabled={isSubmitting || loading}

@@ -39,11 +39,12 @@ type ErrorsResponse = {
     id: string;
     sequence_id: string;
     property_id: string;
-    last_error: string | null;
-    last_error_at?: string | null;
+    is_paused: boolean;
+    status?: string | null;
     current_step: number;
     next_run_at: string | null;
     created_at: string;
+    completed_at?: string | null;
   }>;
   messageErrors: Array<{
     id: string;
@@ -462,12 +463,9 @@ export default function AutomationAnalyticsPage() {
                         Seq {e.sequence_id} · Prop {e.property_id} · Step{" "}
                         {e.current_step}
                       </span>
-                      {e.last_error && (
-                        <span className="text-red-300">{e.last_error}</span>
-                      )}
-                      {e.last_error_at && (
-                        <span className="text-slate-500">
-                          At {new Date(e.last_error_at).toLocaleString()}
+                      {e.is_paused && (
+                        <span className="text-red-300">
+                          {e.status || "Enrollment paused"}
                         </span>
                       )}
                     </div>

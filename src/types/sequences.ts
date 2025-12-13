@@ -26,9 +26,9 @@ export type SequenceEnrollment = {
   next_run_at: string | null;
   is_paused: boolean;
   completed_at: string | null;
-  last_error: string | null;
-  last_error_at?: string | null;
   created_at: string;
+  // Optional API-level metadata (not necessarily DB columns)
+  status?: string | null;
   sequence: {
     name: string;
   } | null;
