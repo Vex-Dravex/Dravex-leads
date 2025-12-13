@@ -25,6 +25,11 @@ export async function GET(req: NextRequest) {
       .gte("created_at", since);
 
     if (error) {
+      console.error("[api/automation/analytics/timeseries] messages", {
+        since,
+        error: error.message,
+        code: error.code,
+      });
       return NextResponse.json(
         {
           error: "Failed to load timeseries",
@@ -57,6 +62,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ series, windowDays: days });
   } catch (err: any) {
+    console.error("[api/automation/analytics/timeseries] unexpected", {
+      error: err?.message,
+    });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 }

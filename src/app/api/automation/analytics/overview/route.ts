@@ -25,6 +25,11 @@ export async function GET(req: NextRequest) {
       .gte("created_at", since);
 
     if (msgError) {
+      console.error("[api/automation/analytics/overview] messages", {
+        since,
+        error: msgError.message,
+        code: msgError.code,
+      });
       return NextResponse.json(
         {
           error: "Failed to load messages",
@@ -47,6 +52,10 @@ export async function GET(req: NextRequest) {
       );
 
     if (enrError) {
+      console.error("[api/automation/analytics/overview] enrollments", {
+        error: enrError.message,
+        code: enrError.code,
+      });
       return NextResponse.json(
         {
           error: "Failed to load enrollments",
@@ -84,6 +93,9 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err: any) {
+    console.error("[api/automation/analytics/overview] unexpected", {
+      error: err?.message,
+    });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 }

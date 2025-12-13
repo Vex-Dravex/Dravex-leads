@@ -36,14 +36,26 @@ export async function PATCH(req: NextRequest) {
       .eq("id", enrollmentId);
 
     if (error) {
+      console.error("[api/automation/analytics/errors/reset] update", {
+        enrollmentId,
+        error: error.message,
+        code: error.code,
+      });
       return NextResponse.json(
-        { error: error.message || "Failed to reset error", code: error.code },
+        {
+          error: error.message || "Failed to reset error",
+          details: error.message,
+          code: error.code,
+        },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
+    console.error("[api/automation/analytics/errors/reset] unexpected", {
+      error: err?.message,
+    });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 }

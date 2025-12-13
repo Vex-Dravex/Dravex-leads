@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import type { ApiErrorInfo } from "@/types/api";
 
 type OverviewResponse = {
   windowDays: number;
@@ -73,26 +74,55 @@ export default function AutomationAnalyticsPage() {
   const [loadingSteps, setLoadingSteps] = useState(false);
   const [loadingErrors, setLoadingErrors] = useState(false);
 
-  const [errorOverview, setErrorOverview] = useState<string | null>(null);
-  const [errorTimeseries, setErrorTimeseries] = useState<string | null>(null);
-  const [errorSteps, setErrorSteps] = useState<string | null>(null);
-  const [errorErrors, setErrorErrors] = useState<string | null>(null);
+  const [errorOverview, setErrorOverview] = useState<ApiErrorInfo | null>(null);
+  const [errorTimeseries, setErrorTimeseries] = useState<ApiErrorInfo | null>(null);
+  const [errorSteps, setErrorSteps] = useState<ApiErrorInfo | null>(null);
+  const [errorErrors, setErrorErrors] = useState<ApiErrorInfo | null>(null);
+
+  const parseApiError = async (
+    res: Response,
+    fallbackUrl: string
+  ): Promise<ApiErrorInfo> => {
+    const payload = await res.json().catch(() => ({}));
+    return {
+      status: res.status,
+      url: res.url || fallbackUrl,
+      error: (payload as any)?.error || res.statusText || "Request failed",
+      details: (payload as any)?.details || (payload as any)?.code,
+      code: (payload as any)?.code,
+    };
+  };
+
+  const formatErrorMessage = (err: ApiErrorInfo | null, context: string) => {
+    if (!err) return null;
+    const status = err.status ?? "unknown";
+    const url = err.url ?? context;
+    const detail = err.details || err.code;
+    const core = err.error || "Unknown error";
+    return `${context} request to ${url} (status ${status}): ${core}${
+      detail ? ` – ${detail}` : ""
+    }`;
+  };
 
   useEffect(() => {
     const fetchOverview = async () => {
       setLoadingOverview(true);
       setErrorOverview(null);
       try {
-        const res = await fetch("/api/automation/analytics/overview");
-        const json = await res.json();
+        const url = "/api/automation/analytics/overview";
+        const res = await fetch(url);
         if (!res.ok) {
-          setErrorOverview(json?.error || "Failed to load overview");
+          setErrorOverview(await parseApiError(res, url));
           return;
         }
-        setOverview(json as OverviewResponse);
+        const json = (await res.json()) as OverviewResponse;
+        setOverview(json);
       } catch (err: any) {
         console.error(err);
-        setErrorOverview(err?.message || "Failed to load overview");
+        setErrorOverview({
+          url: "/api/automation/analytics/overview",
+          error: err?.message || "Failed to load overview",
+        });
       } finally {
         setLoadingOverview(false);
       }
@@ -102,16 +132,20 @@ export default function AutomationAnalyticsPage() {
       setLoadingTimeseries(true);
       setErrorTimeseries(null);
       try {
-        const res = await fetch("/api/automation/analytics/timeseries");
-        const json = await res.json();
+        const url = "/api/automation/analytics/timeseries";
+        const res = await fetch(url);
         if (!res.ok) {
-          setErrorTimeseries(json?.error || "Failed to load timeseries");
+          setErrorTimeseries(await parseApiError(res, url));
           return;
         }
+        const json = await res.json();
         setTimeseries((json?.series as TimeseriesPoint[]) ?? []);
       } catch (err: any) {
         console.error(err);
-        setErrorTimeseries(err?.message || "Failed to load timeseries");
+        setErrorTimeseries({
+          url: "/api/automation/analytics/timeseries",
+          error: err?.message || "Failed to load timeseries",
+        });
       } finally {
         setLoadingTimeseries(false);
       }
@@ -121,16 +155,20 @@ export default function AutomationAnalyticsPage() {
       setLoadingSteps(true);
       setErrorSteps(null);
       try {
-        const res = await fetch("/api/automation/analytics/steps");
-        const json = await res.json();
+        const url = "/api/automation/analytics/steps";
+        const res = await fetch(url);
         if (!res.ok) {
-          setErrorSteps(json?.error || "Failed to load steps analytics");
+          setErrorSteps(await parseApiError(res, url));
           return;
         }
+        const json = await res.json();
         setStepsData(json as StepsResponse);
       } catch (err: any) {
         console.error(err);
-        setErrorSteps(err?.message || "Failed to load steps analytics");
+        setErrorSteps({
+          url: "/api/automation/analytics/steps",
+          error: err?.message || "Failed to load steps analytics",
+        });
       } finally {
         setLoadingSteps(false);
       }
@@ -140,16 +178,20 @@ export default function AutomationAnalyticsPage() {
       setLoadingErrors(true);
       setErrorErrors(null);
       try {
-        const res = await fetch("/api/automation/analytics/errors");
-        const json = await res.json();
+        const url = "/api/automation/analytics/errors";
+        const res = await fetch(url);
         if (!res.ok) {
-          setErrorErrors(json?.error || "Failed to load errors");
+          setErrorErrors(await parseApiError(res, url));
           return;
         }
+        const json = await res.json();
         setErrorsData(json as ErrorsResponse);
       } catch (err: any) {
         console.error(err);
-        setErrorErrors(err?.message || "Failed to load errors");
+        setErrorErrors({
+          url: "/api/automation/analytics/errors",
+          error: err?.message || "Failed to load errors",
+        });
       } finally {
         setLoadingErrors(false);
       }
@@ -209,26 +251,44 @@ export default function AutomationAnalyticsPage() {
 
   const handleResetError = async (enrollmentId: string) => {
     try {
-      const res = await fetch("/api/automation/analytics/errors/reset", {
+      const url = "/api/automation/analytics/errors/reset";
+      const res = await fetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enrollmentId }),
       });
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        console.error("Failed to reset error", payload);
+        const info = await parseApiError(res, url);
+        console.error("Failed to reset error", info);
+        setErrorErrors(info);
         return;
       }
+      setErrorErrors(null);
       // Refresh errors
-      const ref = await fetch("/api/automation/analytics/errors");
-      const json = await ref.json();
+      const refUrl = "/api/automation/analytics/errors";
+      const ref = await fetch(refUrl);
       if (ref.ok) {
+        const json = await ref.json();
         setErrorsData(json as ErrorsResponse);
+      } else {
+        setErrorErrors(await parseApiError(ref, refUrl));
       }
     } catch (err) {
       console.error(err);
+      setErrorErrors({
+        url: "/api/automation/analytics/errors/reset",
+        error: err instanceof Error ? err.message : "Failed to reset error",
+      });
     }
   };
+
+  const overviewErrorText = formatErrorMessage(errorOverview, "Overview");
+  const timeseriesErrorText = formatErrorMessage(
+    errorTimeseries,
+    "Timeseries"
+  );
+  const stepsErrorText = formatErrorMessage(errorSteps, "Steps analytics");
+  const errorsErrorText = formatErrorMessage(errorErrors, "Errors");
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -250,7 +310,7 @@ export default function AutomationAnalyticsPage() {
             </div>
           ) : errorOverview ? (
             <div className="col-span-4 text-sm text-red-300">
-              {errorOverview}
+              {overviewErrorText}
             </div>
           ) : (
             kpis.map((kpi) => (
@@ -280,9 +340,9 @@ export default function AutomationAnalyticsPage() {
               {loadingTimeseries && (
                 <span className="text-[11px] text-slate-400">Loading…</span>
               )}
-              {errorTimeseries && (
+              {timeseriesErrorText && (
                 <span className="text-[11px] text-red-300">
-                  {errorTimeseries}
+                  {timeseriesErrorText}
                 </span>
               )}
             </div>
@@ -317,8 +377,10 @@ export default function AutomationAnalyticsPage() {
               {loadingSteps && (
                 <span className="text-[11px] text-slate-400">Loading…</span>
               )}
-              {errorSteps && (
-                <span className="text-[11px] text-red-300">{errorSteps}</span>
+              {stepsErrorText && (
+                <span className="text-[11px] text-red-300">
+                  {stepsErrorText}
+                </span>
               )}
             </div>
             {!stepsData || stepsData.sequences.length === 0 ? (
@@ -370,8 +432,10 @@ export default function AutomationAnalyticsPage() {
             {loadingErrors && (
               <span className="text-[11px] text-slate-400">Loading…</span>
             )}
-            {errorErrors && (
-              <span className="text-[11px] text-red-300">{errorErrors}</span>
+            {errorsErrorText && (
+              <span className="text-[11px] text-red-300">
+                {errorsErrorText}
+              </span>
             )}
           </div>
           {!errorsData ||

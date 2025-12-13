@@ -21,6 +21,7 @@ import type {
   Sequence,
   SequenceEnrollment,
 } from "@/types/sequences";
+import type { ApiErrorInfo } from "@/types/api";
 
 export default function HomePage() {
   const [properties, setProperties] = useState<Property[]>([]);
@@ -71,9 +72,7 @@ export default function HomePage() {
   const [smsEnrollment, setSmsEnrollment] =
     useState<SequenceEnrollment | null>(null);
   const [smsAutomationLoading, setSmsAutomationLoading] = useState(false);
-  const [smsAutomationError, setSmsAutomationError] = useState<string | null>(
-    null
-  );
+  const [smsAutomationError, setSmsAutomationError] = useState<ApiErrorInfo | null>(null);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [isLoadingSavedSearches, setIsLoadingSavedSearches] = useState(false);
   const [savedSearchError, setSavedSearchError] = useState<string | null>(null);
@@ -604,70 +603,46 @@ export default function HomePage() {
       return;
     }
 
+    const url = `/api/sequence-enrollment?propertyId=${selectedProperty.id}&userId=${user.id}`;
+
     try {
       setSmsAutomationLoading(true);
       setSmsAutomationError(null);
 
-      const { data: seqs, error: seqsError } = await supabase
-        .from("sms_sequences")
-        .select("id, user_id, name, is_active, created_at")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true });
+      const res = await fetch(url);
+      const payload = await res.json().catch(() => ({}));
 
-      if (seqsError) {
-        setSmsAutomationError("Could not load SMS automation data.");
-        return;
-      }
-
-      setSmsSequences(
-        (seqs ?? []).map((s: any) => ({
-          id: s.id,
-          user_id: s.user_id ?? null,
-          name: s.name,
-          is_active: s.is_active,
-          created_at: s.created_at ?? "",
-          updated_at: s.updated_at ?? null,
-        }))
-      );
-
-      const { data: enrollment, error: enrollmentError } = await supabase
-        .from("sms_sequence_enrollments")
-        .select(
-          "id, sequence_id, user_id, property_id, current_step, next_run_at, is_paused, completed_at, last_error, last_error_code, last_error_at, created_at, sequence:sms_sequences(name)"
-        )
-        .eq("property_id", selectedProperty.id)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (enrollmentError) {
-        setSmsAutomationError("Could not load SMS automation data.");
-        return;
-      }
-
-      if (enrollment) {
-        setSmsEnrollment({
-          id: enrollment.id,
-          sequence_id: enrollment.sequence_id,
-          user_id: enrollment.user_id,
-          property_id: enrollment.property_id,
-          current_step: enrollment.current_step,
-          next_run_at: enrollment.next_run_at,
-          is_paused: enrollment.is_paused,
-          completed_at: enrollment.completed_at,
-          last_error: enrollment.last_error,
-          last_error_code: enrollment.last_error_code ?? null,
-          last_error_at: enrollment.last_error_at ?? null,
-          created_at: enrollment.created_at,
-          sequence: enrollment.sequence
-            ? { name: (enrollment as any).sequence.name }
-            : null,
-        });
-      } else {
+      if (!res.ok) {
+        setSmsSequences([]);
         setSmsEnrollment(null);
+        setSmsAutomationError({
+          status: res.status,
+          url,
+          error: payload?.error || "Failed to load SMS automation data",
+          details: payload?.details || payload?.code,
+          code: payload?.code,
+        });
+        return;
       }
+
+      const sequencesPayload = Array.isArray((payload as any)?.sequences)
+        ? ((payload as any).sequences as Sequence[])
+        : [];
+      setSmsSequences(sequencesPayload);
+
+      const enrollment = (payload as any)?.enrollment as
+        | SequenceEnrollment
+        | null
+        | undefined;
+      setSmsEnrollment(enrollment ?? null);
     } catch (err) {
-      setSmsAutomationError("Could not load SMS automation data.");
+      const message =
+        err instanceof Error ? err.message : "Failed to load SMS automation data";
+      setSmsAutomationError({
+        status: undefined,
+        url,
+        error: message,
+      });
     } finally {
       setSmsAutomationLoading(false);
     }
@@ -686,6 +661,17 @@ export default function HomePage() {
     loadSmsHistory();
     loadSmsAutomation();
   }, [selectedProperty, user, loadSmsHistory, loadSmsAutomation]);
+
+  const getAutomationErrorText = (err: ApiErrorInfo | null) => {
+    if (!err) return null;
+    const status = err.status ?? "unknown";
+    const url = err.url ?? "/api/sequence-enrollment";
+    const detail = err.details || err.code;
+    const core = err.error || "Unknown error";
+    return `SMS automation request to ${url} (status ${status}): ${core}${
+      detail ? ` – ${detail}` : ""
+    }`;
+  };
 
   // Load notes for selected property (scoped to user)
   useEffect(() => {
@@ -2031,7 +2017,7 @@ export default function HomePage() {
                 )}
                 {smsAutomationError && user && !smsAutomationLoading && (
                   <p className="mt-2 text-[11px] text-red-300">
-                    {smsAutomationError}
+                    {getAutomationErrorText(smsAutomationError)}
                   </p>
                 )}
               </section>

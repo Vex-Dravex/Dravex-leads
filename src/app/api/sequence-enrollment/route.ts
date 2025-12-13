@@ -19,6 +19,97 @@ if (!supabaseUrl || !serviceRoleKey) {
 
 const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const propertyId = searchParams.get("propertyId");
+  const userId = searchParams.get("userId");
+
+  if (!propertyId || !userId) {
+    return NextResponse.json(
+      {
+        error: "propertyId and userId are required",
+        details: "Missing query params",
+      },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const { data: seqs, error: seqsError } = await supabaseAdmin
+      .from("sms_sequences")
+      .select("id, user_id, name, is_active, created_at, updated_at")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true });
+
+    if (seqsError) {
+      console.error("[api/sequence-enrollment][GET] sequences", {
+        propertyId,
+        userId,
+        error: seqsError.message,
+        code: seqsError.code,
+      });
+      return NextResponse.json(
+        {
+          error: "Failed to load sequences",
+          details: seqsError.message,
+          code: seqsError.code,
+        },
+        { status: 500 }
+      );
+    }
+
+    const { data: enrollment, error: enrollmentError } = await supabaseAdmin
+      .from("sms_sequence_enrollments")
+      .select(
+        "id, sequence_id, user_id, property_id, current_step, next_run_at, is_paused, completed_at, last_error, last_error_code, last_error_at, created_at, sequence:sms_sequences(name)"
+      )
+      .eq("property_id", propertyId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (enrollmentError) {
+      console.error("[api/sequence-enrollment][GET] enrollment", {
+        propertyId,
+        userId,
+        error: enrollmentError.message,
+        code: enrollmentError.code,
+      });
+      return NextResponse.json(
+        {
+          error: "Failed to load enrollment",
+          details: enrollmentError.message,
+          code: enrollmentError.code,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      sequences: seqs ?? [],
+      enrollment: enrollment
+        ? {
+            ...enrollment,
+            sequence: enrollment.sequence ? { name: (enrollment as any).sequence.name } : null,
+          }
+        : null,
+    });
+  } catch (err: any) {
+    console.error("[api/sequence-enrollment][GET] unexpected", {
+      propertyId,
+      userId,
+      error: err?.message,
+    });
+    return NextResponse.json(
+      {
+        error: "Unexpected server error",
+        details: err?.message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -40,9 +131,20 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (stepError || !stepData) {
+      console.error("[api/sequence-enrollment][POST] first step", {
+        sequenceId,
+        propertyId,
+        userId,
+        error: stepError?.message,
+        code: stepError?.code,
+      });
       return NextResponse.json(
-        { error: "Could not load first step for sequence" },
-        { status: 400 }
+        {
+          error: "Could not load first step for sequence",
+          details: stepError?.message,
+          code: stepError?.code,
+        },
+        { status: 404 }
       );
     }
 
@@ -66,14 +168,28 @@ export async function POST(req: Request) {
       .single();
 
     if (insertError || !enrollment) {
+      console.error("[api/sequence-enrollment][POST] create enrollment", {
+        propertyId,
+        sequenceId,
+        userId,
+        error: insertError?.message,
+        code: insertError?.code,
+      });
       return NextResponse.json(
-        { error: insertError?.message ?? "Failed to create enrollment" },
-        { status: 400 }
+        {
+          error: "Failed to create enrollment",
+          details: insertError?.message,
+          code: insertError?.code,
+        },
+        { status: 500 }
       );
     }
 
     return NextResponse.json({ enrollment });
   } catch (err: any) {
+    console.error("[api/sequence-enrollment][POST] unexpected", {
+      error: err?.message,
+    });
     return NextResponse.json(
       { error: err?.message ?? "Unexpected server error" },
       { status: 500 }
@@ -100,8 +216,18 @@ export async function PATCH(req: NextRequest) {
       .maybeSingle();
 
     if (fetchError || !enrollment) {
+      console.error("[api/sequence-enrollment][PATCH] fetch enrollment", {
+        enrollmentId,
+        action,
+        error: fetchError?.message,
+        code: fetchError?.code,
+      });
       return NextResponse.json(
-        { error: "Enrollment not found" },
+        {
+          error: "Enrollment not found",
+          details: fetchError?.message,
+          code: fetchError?.code,
+        },
         { status: 404 }
       );
     }
@@ -113,8 +239,17 @@ export async function PATCH(req: NextRequest) {
         .eq("id", enrollmentId);
 
       if (error) {
+        console.error("[api/sequence-enrollment][PATCH] pause", {
+          enrollmentId,
+          error: error.message,
+          code: error.code,
+        });
         return NextResponse.json(
-          { error: "Failed to pause enrollment" },
+          {
+            error: "Failed to pause enrollment",
+            details: error.message,
+            code: error.code,
+          },
           { status: 500 }
         );
       }
@@ -138,8 +273,17 @@ export async function PATCH(req: NextRequest) {
         .eq("id", enrollmentId);
 
       if (error) {
+        console.error("[api/sequence-enrollment][PATCH] resume", {
+          enrollmentId,
+          error: error.message,
+          code: error.code,
+        });
         return NextResponse.json(
-          { error: "Failed to resume enrollment" },
+          {
+            error: "Failed to resume enrollment",
+            details: error.message,
+            code: error.code,
+          },
           { status: 500 }
         );
       }
@@ -152,6 +296,9 @@ export async function PATCH(req: NextRequest) {
       { status: 400 }
     );
   } catch (err: any) {
+    console.error("[api/sequence-enrollment][PATCH] unexpected", {
+      error: err?.message,
+    });
     return NextResponse.json(
       { error: err?.message ?? "Unexpected server error" },
       { status: 500 }
@@ -177,14 +324,26 @@ export async function DELETE(req: NextRequest) {
       .eq("id", enrollmentId);
 
     if (error) {
+      console.error("[api/sequence-enrollment][DELETE] delete", {
+        enrollmentId,
+        error: error.message,
+        code: error.code,
+      });
       return NextResponse.json(
-        { error: "Failed to delete enrollment" },
+        {
+          error: "Failed to delete enrollment",
+          details: error.message,
+          code: error.code,
+        },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
+    console.error("[api/sequence-enrollment][DELETE] unexpected", {
+      error: err?.message,
+    });
     return NextResponse.json(
       { error: err?.message ?? "Unexpected server error" },
       { status: 500 }

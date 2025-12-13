@@ -19,6 +19,10 @@ export async function GET(_req: NextRequest) {
       .select("id, name");
 
     if (seqError) {
+      console.error("[api/automation/analytics/steps] sequences", {
+        error: seqError.message,
+        code: seqError.code,
+      });
       return NextResponse.json(
         {
           error: "Failed to load sequences",
@@ -34,6 +38,10 @@ export async function GET(_req: NextRequest) {
       .select("id, sequence_id, step_number");
 
     if (stepsError) {
+      console.error("[api/automation/analytics/steps] steps", {
+        error: stepsError.message,
+        code: stepsError.code,
+      });
       return NextResponse.json(
         {
           error: "Failed to load steps",
@@ -49,6 +57,10 @@ export async function GET(_req: NextRequest) {
       .select("sequence_id, current_step, last_error");
 
     if (enrError) {
+      console.error("[api/automation/analytics/steps] enrollments", {
+        error: enrError.message,
+        code: enrError.code,
+      });
       return NextResponse.json(
         {
           error: "Failed to load enrollments",
@@ -113,6 +125,9 @@ export async function GET(_req: NextRequest) {
 
     return NextResponse.json({ sequences: result });
   } catch (err: any) {
+    console.error("[api/automation/analytics/steps] unexpected", {
+      error: err?.message,
+    });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 }

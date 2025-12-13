@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Sequence, SequenceEnrollment } from "@/types/sequences";
 import { supabase } from "@/lib/supabaseClient";
+import type { ApiErrorInfo } from "@/types/api";
 
 type SmsAutomationSectionProps = {
   propertyId: string;
@@ -11,7 +12,7 @@ type SmsAutomationSectionProps = {
   enrollment: SequenceEnrollment | null;
   loading: boolean;
   setLoading: (v: boolean) => void;
-  setErrorMsg: (msg: string | null) => void;
+  setErrorMsg: (msg: ApiErrorInfo | null) => void;
   onReload: () => Promise<void>;
 };
 
@@ -37,6 +38,26 @@ export function SmsAutomationSection({
     if (enrollment.is_paused) return "Paused";
     return "Active";
   }, [enrollment]);
+
+  const parseErrorResponse = async (
+    res: Response,
+    fallbackUrl: string,
+    fallbackMessage: string
+  ): Promise<{ info: ApiErrorInfo; message: string }> => {
+    const payload = await res.json().catch(() => ({}));
+    const message =
+      (payload as any)?.error || res.statusText || fallbackMessage;
+    return {
+      info: {
+        status: res.status,
+        url: res.url || fallbackUrl,
+        error: message,
+        details: (payload as any)?.details || (payload as any)?.code,
+        code: (payload as any)?.code,
+      },
+      message,
+    };
+  };
 
   const handleEnroll = async () => {
     if (!selectedSequenceId) {
@@ -70,9 +91,13 @@ export function SmsAutomationSection({
       });
 
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        setError(payload?.error || "Could not enroll.");
-        setErrorMsg(payload?.error || "Could not enroll.");
+        const { info, message } = await parseErrorResponse(
+          res,
+          "/api/sequence-enrollment",
+          "Could not enroll."
+        );
+        setError(message);
+        setErrorMsg(info);
         setLoading(false);
         return;
       }
@@ -81,8 +106,12 @@ export function SmsAutomationSection({
       router.refresh();
       setSelectedSequenceId("");
     } catch (err: any) {
-      setError(err?.message || "Could not enroll.");
-      setErrorMsg(err?.message || "Could not enroll.");
+      const message = err?.message || "Could not enroll.";
+      setError(message);
+      setErrorMsg({
+        url: "/api/sequence-enrollment",
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
       setLoading(false);
@@ -108,9 +137,13 @@ export function SmsAutomationSection({
       });
 
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        setError(payload?.error || "Could not update enrollment.");
-        setErrorMsg(payload?.error || "Could not update enrollment.");
+        const { info, message } = await parseErrorResponse(
+          res,
+          "/api/sequence-enrollment",
+          "Could not update enrollment."
+        );
+        setError(message);
+        setErrorMsg(info);
         setLoading(false);
         return;
       }
@@ -118,8 +151,12 @@ export function SmsAutomationSection({
       await onReload();
       router.refresh();
     } catch (err: any) {
-      setError(err?.message || "Could not update enrollment.");
-      setErrorMsg(err?.message || "Could not update enrollment.");
+      const message = err?.message || "Could not update enrollment.";
+      setError(message);
+      setErrorMsg({
+        url: "/api/sequence-enrollment",
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
       setLoading(false);
@@ -143,9 +180,13 @@ export function SmsAutomationSection({
       });
 
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}));
-        setError(payload?.error || "Could not cancel enrollment.");
-        setErrorMsg(payload?.error || "Could not cancel enrollment.");
+        const { info, message } = await parseErrorResponse(
+          res,
+          "/api/sequence-enrollment",
+          "Could not cancel enrollment."
+        );
+        setError(message);
+        setErrorMsg(info);
         setLoading(false);
         return;
       }
@@ -153,8 +194,12 @@ export function SmsAutomationSection({
       await onReload();
       router.refresh();
     } catch (err: any) {
-      setError(err?.message || "Could not cancel enrollment.");
-      setErrorMsg(err?.message || "Could not cancel enrollment.");
+      const message = err?.message || "Could not cancel enrollment.";
+      setError(message);
+      setErrorMsg({
+        url: "/api/sequence-enrollment",
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
       setLoading(false);
@@ -177,10 +222,14 @@ export function SmsAutomationSection({
         }),
       });
 
-      const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(payload?.error || "Could not reset enrollment.");
-        setErrorMsg(payload?.error || "Could not reset enrollment.");
+        const { info, message } = await parseErrorResponse(
+          res,
+          "/api/automation/reset-enrollment-error",
+          "Could not reset enrollment."
+        );
+        setError(message);
+        setErrorMsg(info);
         setLoading(false);
         return;
       }
@@ -188,8 +237,12 @@ export function SmsAutomationSection({
       await onReload();
       router.refresh();
     } catch (err: any) {
-      setError(err?.message || "Could not reset enrollment.");
-      setErrorMsg(err?.message || "Could not reset enrollment.");
+      const message = err?.message || "Could not reset enrollment.";
+      setError(message);
+      setErrorMsg({
+        url: "/api/automation/reset-enrollment-error",
+        error: message,
+      });
     } finally {
       setIsSubmitting(false);
       setLoading(false);

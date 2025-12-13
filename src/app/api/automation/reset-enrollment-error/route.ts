@@ -35,6 +35,11 @@ export async function PATCH(req: NextRequest) {
       .maybeSingle();
 
     if (fetchError) {
+      console.error("[api/automation/reset-enrollment-error] fetch", {
+        enrollmentId,
+        error: fetchError.message,
+        code: fetchError.code,
+      });
       return NextResponse.json(
         {
           error: "Failed to load enrollment",
@@ -64,6 +69,11 @@ export async function PATCH(req: NextRequest) {
       .eq("id", enrollmentId);
 
     if (updateError) {
+      console.error("[api/automation/reset-enrollment-error] update", {
+        enrollmentId,
+        error: updateError.message,
+        code: updateError.code,
+      });
       return NextResponse.json(
         {
           error: "Failed to reset enrollment",
@@ -76,6 +86,9 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
+    console.error("[api/automation/reset-enrollment-error] unexpected", {
+      error: err?.message,
+    });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 }
