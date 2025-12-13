@@ -35,6 +35,16 @@ export type Property = {
   // NEW: seller_phone
   sellerPhone: string | null;
 
+  // Enriched / external data (optional, for MLS / public records)
+  ownerName?: string | null;
+  ownerMailingAddress?: string | null;
+  lastSaleDate?: string | null;
+  lastSalePrice?: number | null;
+  assessedValue?: number | null;
+  taxYear?: number | null;
+
+  externalIds?: ExternalPropertyId[];
+
   // DB: lead_stage
   leadStage: LeadStage | null;
 
@@ -107,3 +117,10 @@ export type SavedSearch = {
   createdAt: string;
 };
 
+export type ExternalPropertyId = {
+  id: string;
+  propertyId: string;
+  provider: string;
+  externalId: string;
+  lastSyncedAt: string | null;
+};
