@@ -39,6 +39,8 @@ type ErrorsResponse = {
     sequence_id: string;
     property_id: string;
     last_error: string | null;
+    last_error_code?: string | null;
+    last_error_at?: string | null;
     current_step: number;
     next_run_at: string | null;
     created_at: string;
@@ -390,23 +392,28 @@ export default function AutomationAnalyticsPage() {
                         className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
                       >
                         <div className="flex flex-col">
-                          <span className="text-slate-400">
-                            {new Date(e.created_at).toLocaleString()}
-                          </span>
-                          <span>
-                            Seq {e.sequence_id} · Prop {e.property_id} · Step{" "}
-                            {e.current_step}
-                          </span>
-                          {e.last_error && (
-                            <span className="text-red-300">{e.last_error}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {e.next_run_at && (
-                            <span className="text-[11px] text-slate-400">
-                              Next: {new Date(e.next_run_at).toLocaleString()}
-                            </span>
-                          )}
+                      <span className="text-slate-400">
+                        {new Date(e.created_at).toLocaleString()}
+                      </span>
+                      <span>
+                        Seq {e.sequence_id} · Prop {e.property_id} · Step{" "}
+                        {e.current_step}
+                      </span>
+                      {e.last_error && (
+                        <span className="text-red-300">{e.last_error}</span>
+                      )}
+                      {e.last_error_at && (
+                        <span className="text-slate-500">
+                          At {new Date(e.last_error_at).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {e.next_run_at && (
+                        <span className="text-[11px] text-slate-400">
+                          Next: {new Date(e.next_run_at).toLocaleString()}
+                        </span>
+                      )}
                           <button
                             onClick={() => handleResetError(e.id)}
                             className="rounded bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-100 hover:bg-slate-700"

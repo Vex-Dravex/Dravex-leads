@@ -27,6 +27,8 @@ export type SequenceEnrollment = {
   is_paused: boolean;
   completed_at: string | null;
   last_error: string | null;
+  last_error_code?: string | null;
+  last_error_at?: string | null;
   created_at: string;
   sequence: {
     name: string;

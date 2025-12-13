@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 
+/**
+ * Cron worker:
+ * - Pulls due enrollments
+ * - Applies smart send windows (timezone-aware quiet hours)
+ * - Renders templates, sends SMS (dev/test aware)
+ * - Logs to property_sms_messages
+ * - Advances/completes enrollment or moves to error state
+ */
+
 export const runtime = "nodejs";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -74,6 +83,22 @@ const DEFAULT_WINDOW: UserSendWindow = {
   quiet_hours_start: "21:00",
   quiet_hours_end: "08:00",
   timezone: "America/Los_Angeles",
+};
+
+const setEnrollmentError = async (
+  enrollmentId: string,
+  message: string,
+  code?: string | null
+) => {
+  await supabaseAdmin
+    .from("sms_sequence_enrollments")
+    .update({
+      is_paused: true,
+      last_error: message,
+      last_error_code: code ?? null,
+      last_error_at: new Date().toISOString(),
+    })
+    .eq("id", enrollmentId);
 };
 
 const renderTemplate = (template: string, property: PropertyRow) =>
@@ -220,8 +245,15 @@ export async function POST(req: NextRequest) {
               completed_at: new Date().toISOString(),
               next_run_at: null,
               last_error: "Missing step for current_step",
+              last_error_at: new Date().toISOString(),
             })
             .eq("id", enrollment.id);
+          console.error("[cron] Missing step", {
+            enrollmentId: enrollment.id,
+            sequenceId: enrollment.sequence_id,
+            current_step: enrollment.current_step,
+            error: stepError?.message,
+          });
           failed += 1;
           continue;
         }
@@ -235,25 +267,23 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (propertyError || !property) {
-          await supabaseAdmin
-            .from("sms_sequence_enrollments")
-            .update({
-              is_paused: true,
-              last_error: "Missing property",
-            })
-            .eq("id", enrollment.id);
+          await setEnrollmentError(enrollment.id, "Missing property", propertyError?.code);
+          console.error("[cron] Missing property", {
+            enrollmentId: enrollment.id,
+            sequenceId: enrollment.sequence_id,
+            propertyId: enrollment.property_id,
+            error: propertyError?.message,
+          });
           failed += 1;
           continue;
         }
 
         if (!step.body_template) {
-          await supabaseAdmin
-            .from("sms_sequence_enrollments")
-            .update({
-              is_paused: true,
-              last_error: "Missing body_template",
-            })
-            .eq("id", enrollment.id);
+          await setEnrollmentError(enrollment.id, "Missing body_template");
+          console.error("[cron] Missing body_template", {
+            enrollmentId: enrollment.id,
+            sequenceId: enrollment.sequence_id,
+          });
           failed += 1;
           continue;
         }
@@ -324,8 +354,17 @@ export async function POST(req: NextRequest) {
             .update({
               is_paused: true,
               last_error: smsErr?.message ?? "Sequence SMS failed",
+              last_error_code: smsErr?.code ?? null,
+              last_error_at: new Date().toISOString(),
             })
             .eq("id", enrollment.id);
+          console.error("[cron] Twilio send failed", {
+            enrollmentId: enrollment.id,
+            sequenceId: enrollment.sequence_id,
+            propertyId: enrollment.property_id,
+            stepNumber: enrollment.current_step,
+            error: smsErr?.message,
+          });
           failed += 1;
           continue;
         }
@@ -364,7 +403,16 @@ export async function POST(req: NextRequest) {
 
         succeeded += 1;
       } catch (err: any) {
-        console.error("[cron] Enrollment processing error", err);
+        console.error("[cron] Enrollment processing error", {
+          enrollmentId: (enrollment as any)?.id,
+          sequenceId: (enrollment as any)?.sequence_id,
+          propertyId: (enrollment as any)?.property_id,
+          error: err?.message,
+        });
+        await setEnrollmentError(
+          (enrollment as any)?.id,
+          err?.message ?? "Processing error"
+        );
         failed += 1;
       }
     }

@@ -634,7 +634,7 @@ export default function HomePage() {
       const { data: enrollment, error: enrollmentError } = await supabase
         .from("sms_sequence_enrollments")
         .select(
-          "id, sequence_id, user_id, property_id, current_step, next_run_at, is_paused, completed_at, last_error, created_at, sequence:sms_sequences(name)"
+          "id, sequence_id, user_id, property_id, current_step, next_run_at, is_paused, completed_at, last_error, last_error_code, last_error_at, created_at, sequence:sms_sequences(name)"
         )
         .eq("property_id", selectedProperty.id)
         .eq("user_id", user.id)
@@ -656,6 +656,8 @@ export default function HomePage() {
           is_paused: enrollment.is_paused,
           completed_at: enrollment.completed_at,
           last_error: enrollment.last_error,
+          last_error_code: enrollment.last_error_code ?? null,
+          last_error_at: enrollment.last_error_at ?? null,
           created_at: enrollment.created_at,
           sequence: enrollment.sequence
             ? { name: (enrollment as any).sequence.name }

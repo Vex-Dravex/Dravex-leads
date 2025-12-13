@@ -5,17 +5,21 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error("Missing Supabase env vars for analytics error reset");
+  throw new Error("Missing Supabase env vars for reset enrollment error route");
 }
 
 const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+type ResetPayload = {
+  enrollmentId?: string;
+};
+
 export async function PATCH(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { enrollmentId } = body || {};
+    const body = (await req.json()) as ResetPayload;
+    const enrollmentId = body.enrollmentId;
 
     if (!enrollmentId) {
       return NextResponse.json(
@@ -24,7 +28,31 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const { error } = await supabaseAdmin
+    const { data: enrollment, error: fetchError } = await supabaseAdmin
+      .from("sms_sequence_enrollments")
+      .select("id, last_error, is_paused")
+      .eq("id", enrollmentId)
+      .maybeSingle();
+
+    if (fetchError) {
+      return NextResponse.json(
+        {
+          error: "Failed to load enrollment",
+          details: fetchError.message,
+          code: fetchError.code,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!enrollment) {
+      return NextResponse.json(
+        { error: "Enrollment not found", id: enrollmentId },
+        { status: 404 }
+      );
+    }
+
+    const { error: updateError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .update({
         last_error: null,
@@ -35,9 +63,13 @@ export async function PATCH(req: NextRequest) {
       })
       .eq("id", enrollmentId);
 
-    if (error) {
+    if (updateError) {
       return NextResponse.json(
-        { error: error.message || "Failed to reset error", code: error.code },
+        {
+          error: "Failed to reset enrollment",
+          details: updateError.message,
+          code: updateError.code,
+        },
         { status: 500 }
       );
     }

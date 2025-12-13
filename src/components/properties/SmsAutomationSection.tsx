@@ -161,6 +161,41 @@ export function SmsAutomationSection({
     }
   };
 
+  const handleReset = async () => {
+    if (!enrollment) return;
+    try {
+      setIsSubmitting(true);
+      setLoading(true);
+      setError(null);
+      setErrorMsg(null);
+
+      const res = await fetch("/api/automation/reset-enrollment-error", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enrollmentId: enrollment.id,
+        }),
+      });
+
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(payload?.error || "Could not reset enrollment.");
+        setErrorMsg(payload?.error || "Could not reset enrollment.");
+        setLoading(false);
+        return;
+      }
+
+      await onReload();
+      router.refresh();
+    } catch (err: any) {
+      setError(err?.message || "Could not reset enrollment.");
+      setErrorMsg(err?.message || "Could not reset enrollment.");
+    } finally {
+      setIsSubmitting(false);
+      setLoading(false);
+    }
+  };
+
   return (
     <section className="rounded-lg border border-slate-800 bg-slate-900/70 p-4">
       <div className="mb-2 flex items-center justify-between">
@@ -251,6 +286,11 @@ export function SmsAutomationSection({
           {enrollment.last_error && (
             <div className="text-[11px] text-red-300">
               {enrollment.last_error}
+              {enrollment.last_error_at && (
+                <span className="ml-2 text-slate-400">
+                  ({new Date(enrollment.last_error_at).toLocaleString()})
+                </span>
+              )}
             </div>
           )}
 
@@ -283,6 +323,16 @@ export function SmsAutomationSection({
               >
                 {isSubmitting ? "Working…" : "Cancel"}
               </button>
+              {enrollment.last_error && (
+                <button
+                  type="button"
+                  disabled={isSubmitting || loading}
+                  onClick={handleReset}
+                  className="rounded px-3 py-1 text-[11px] font-semibold text-slate-100 bg-amber-600 hover:bg-amber-500 disabled:opacity-60"
+                >
+                  {isSubmitting ? "Working…" : "Reset Error"}
+                </button>
+              )}
             </div>
           )}
         </div>
