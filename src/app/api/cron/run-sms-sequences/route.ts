@@ -208,7 +208,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ processed: 0, succeeded: 0, failed: 0 });
     }
 
-    const twilioClient = twilio(accountSid, authToken);
     let succeeded = 0;
     let failed = 0;
 
