@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import twilio from "twilio";
+import { getSmsMode, sendSmsOrMock } from "@/lib/sms";
 
 type Payload = {
   propertyId?: string;
@@ -43,9 +43,7 @@ export async function POST(req: NextRequest) {
   let price: number | undefined;
   let sellerPhone: string | null | undefined;
 
-  const isDevMode =
-    process.env.NODE_ENV !== "production" ||
-    process.env.SMS_DEV_MODE === "true";
+  const smsMode = getSmsMode();
 
   if ("propertyId" in body && body.propertyId) {
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -118,11 +116,7 @@ export async function POST(req: NextRequest) {
 
     let toNumber: string;
 
-    if (isDevMode) {
-      toNumber = testNumber;
-    } else {
-      toNumber = targetSellerNumber || testNumber;
-    }
+    toNumber = targetSellerNumber || testNumber;
 
     if (!toNumber) {
       return NextResponse.json(
@@ -131,46 +125,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!accountSid || !authToken || !fromNumber) {
-      console.error("[/api/text-seller] Missing Twilio configuration.");
-      return NextResponse.json(
-        { error: "SMS provider not configured" },
-        { status: 500 }
-      );
-    }
-
-    const client = twilio(accountSid, authToken);
-
     const bodyText = `New lead from Dravex Leads:
 ${address}, ${city}, ${state} ${zip}
 List price: $${Number(price).toLocaleString()}`;
 
-    const message = await client.messages.create({
-      from: fromNumber,
+    const supabase =
+      supabaseUrl && supabaseServiceKey
+        ? createClient(supabaseUrl, supabaseServiceKey, {
+            auth: { autoRefreshToken: false, persistSession: false },
+          })
+        : null;
+
+    const sendResult = await sendSmsOrMock({
       to: toNumber,
+      from: fromNumber || "", // helper will error if missing in live mode
       body: bodyText,
+      source: "manual",
+      propertyId: body.propertyId,
+      userId: body.userId ?? null,
+      supabaseClient: supabase ?? undefined,
+      twilioAccountSid: accountSid,
+      twilioAuthToken: authToken,
+      debugLabel: "/api/text-seller",
     });
 
-    if (supabaseUrl && supabaseServiceKey && body.propertyId) {
-      try {
-        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        });
-
-        await supabase.from("property_sms_messages").insert({
-          property_id: body.propertyId,
-          user_id: body.userId ?? null,
-          to_number: toNumber,
-          from_number: fromNumber!,
-          body: bodyText,
-          status: "sent",
-          source: "manual",
-          provider_message_sid: message?.sid ?? null,
-          error_message: null,
-        });
-      } catch {
-        // Swallow logging errors for now
-      }
+    if (sendResult.error) {
+      return NextResponse.json(
+        { error: "Failed to send SMS", details: sendResult.error },
+        { status: 500 }
+      );
     }
 
     const usedSellerPhone =
@@ -208,7 +191,7 @@ List price: $${Number(price).toLocaleString()}`;
     }
 
     return NextResponse.json(
-      { error: "Failed to send SMS", message: error?.message },
+      { error: "Failed to send SMS", details: error?.message },
       { status: 500 }
     );
   }

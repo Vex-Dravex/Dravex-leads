@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import twilio from "twilio";
+import { sendSmsOrMock } from "@/lib/sms";
 
 /**
  * Cron worker:
@@ -20,10 +20,6 @@ const authToken = process.env.TWILIO_AUTH_TOKEN;
 const fromNumber = process.env.TWILIO_FROM_NUMBER;
 const testToNumber = process.env.TWILIO_TEST_TO_NUMBER;
 const cronSecret = process.env.CRON_SECRET;
-
-const isDevMode =
-  process.env.NODE_ENV !== "production" ||
-  process.env.SMS_DEV_MODE === "true";
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error(
@@ -289,18 +285,13 @@ export async function POST(req: NextRequest) {
 
         const targetSellerNumber = (property as PropertyRow).seller_phone?.trim();
         const testNumber = (testToNumber ?? "").trim();
+        const toNumber = targetSellerNumber || testNumber;
 
-        if (!testNumber) {
-          console.error("[cron] TWILIO_TEST_TO_NUMBER not set");
-          return NextResponse.json(
-            { error: "TWILIO_TEST_TO_NUMBER is not configured" },
-            { status: 500 }
-          );
+        if (!toNumber) {
+          await setEnrollmentError(enrollment.id, "No destination number");
+          failed += 1;
+          continue;
         }
-
-        const toNumber = isDevMode
-          ? testNumber
-          : targetSellerNumber || testNumber;
 
         const nowDate = new Date();
         if (isWithinQuietHours(sendSetting as UserSendWindow | null, nowDate)) {
@@ -315,43 +306,38 @@ export async function POST(req: NextRequest) {
         }
 
         try {
-          const message = await twilioClient.messages.create({
+          const sendResult = await sendSmsOrMock({
             to: toNumber,
-            from: fromNumber!,
+            from: fromNumber || "",
             body: smsBody,
+            source: "sequence",
+            propertyId: enrollment.property_id,
+            userId: enrollment.user_id,
+            supabaseClient: supabaseAdmin,
+            twilioAccountSid: accountSid,
+            twilioAuthToken: authToken,
+            debugLabel: "[cron] sequence send",
           });
 
-          await supabaseAdmin.from("property_sms_messages").insert({
-            property_id: enrollment.property_id,
-            user_id: enrollment.user_id,
-            to_number: toNumber,
-            from_number: fromNumber,
-            body: smsBody,
-            status: "sent",
-            source: "sequence",
-            provider_message_sid: message.sid ?? null,
-            error_message: null,
-          });
+          if (sendResult.error) {
+            await supabaseAdmin
+              .from("sms_sequence_enrollments")
+              .update({
+                is_paused: true,
+                next_run_at: null,
+              })
+              .eq("id", enrollment.id);
+            console.error("[cron] Twilio send failed", {
+              enrollmentId: enrollment.id,
+              sequenceId: enrollment.sequence_id,
+              propertyId: enrollment.property_id,
+              stepNumber: enrollment.current_step,
+              error: sendResult.error,
+            });
+            failed += 1;
+            continue;
+          }
         } catch (smsErr: any) {
-          await supabaseAdmin.from("property_sms_messages").insert({
-            property_id: enrollment.property_id,
-            user_id: enrollment.user_id,
-            to_number: toNumber,
-            from_number: fromNumber,
-            body: smsBody,
-            status: "failed",
-            source: "sequence",
-            provider_message_sid: null,
-            error_message: smsErr?.message ?? "Sequence SMS failed",
-          });
-
-          await supabaseAdmin
-            .from("sms_sequence_enrollments")
-            .update({
-              is_paused: true,
-              next_run_at: null,
-            })
-            .eq("id", enrollment.id);
           console.error("[cron] Twilio send failed", {
             enrollmentId: enrollment.id,
             sequenceId: enrollment.sequence_id,
