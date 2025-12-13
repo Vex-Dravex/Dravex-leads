@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const { data: enrollments, error: enrError } = await supabaseAdmin
       .from("sms_sequence_enrollments")
       .select(
-        "id, sequence_id, property_id, last_error, last_error_code, last_error_at, current_step, next_run_at, created_at"
+        "id, sequence_id, property_id, last_error, last_error_at, current_step, next_run_at, created_at"
       )
       .not("last_error", "is", null)
       .order("created_at", { ascending: false })

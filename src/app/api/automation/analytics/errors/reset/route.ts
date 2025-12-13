@@ -28,7 +28,6 @@ export async function PATCH(req: NextRequest) {
       .from("sms_sequence_enrollments")
       .update({
         last_error: null,
-        last_error_code: null,
         last_error_at: null,
         is_paused: false,
         next_run_at: new Date().toISOString(),

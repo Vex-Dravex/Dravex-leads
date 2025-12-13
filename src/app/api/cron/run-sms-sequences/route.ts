@@ -88,14 +88,13 @@ const DEFAULT_WINDOW: UserSendWindow = {
 const setEnrollmentError = async (
   enrollmentId: string,
   message: string,
-  code?: string | null
+  _code?: string | null
 ) => {
   await supabaseAdmin
     .from("sms_sequence_enrollments")
     .update({
       is_paused: true,
       last_error: message,
-      last_error_code: code ?? null,
       last_error_at: new Date().toISOString(),
     })
     .eq("id", enrollmentId);
@@ -354,7 +353,6 @@ export async function POST(req: NextRequest) {
             .update({
               is_paused: true,
               last_error: smsErr?.message ?? "Sequence SMS failed",
-              last_error_code: smsErr?.code ?? null,
               last_error_at: new Date().toISOString(),
             })
             .eq("id", enrollment.id);

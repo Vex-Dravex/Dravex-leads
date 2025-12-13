@@ -40,7 +40,6 @@ type ErrorsResponse = {
     sequence_id: string;
     property_id: string;
     last_error: string | null;
-    last_error_code?: string | null;
     last_error_at?: string | null;
     current_step: number;
     next_run_at: string | null;
